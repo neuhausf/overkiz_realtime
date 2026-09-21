@@ -640,8 +640,11 @@ async def test_full_tilt_open_does_not_start_a_position_run(
     )
     await hass.async_block_till_done()
 
-    assert len(source_calls.of("open_cover_tilt")) == 1
-    # Only the slats were commanded, the cover itself was not.
+    # The slats are driven to the angle asked for, and the cover itself is
+    # not commanded at all.
+    calls = source_calls.of("set_cover_tilt_position")
+    assert len(calls) == 1
+    assert calls[0]["tilt_position"] == 100
     assert source_calls.of("open_cover") == []
 
     # The gateway now reports the motor running, as it does for a tilt.
@@ -774,3 +777,54 @@ async def test_external_tilt_command_does_not_start_a_position_run(
     await _advance(hass, freezer, 3)
 
     assert hass.states.get(TARGET).attributes["current_position"] == 70
+
+
+async def test_full_tilt_uses_set_position_when_the_source_supports_it(
+    hass: HomeAssistant, source_calls: SourceCalls
+) -> None:
+    """0 % and 100 % go out as a tilt position, not as open/close tilt.
+
+    Found on real hardware: on a Somfy io venetian blind open_cover_tilt and
+    close_cover_tilt only nudge the slats -- the motor twitches and the slats
+    stay where they were. set_cover_tilt_position reaches the angle, which is
+    why 1 % and 99 % worked while 0 % and 100 % did not.
+    """
+    _set_source(hass, "open", 50, features=TILTABLE, current_tilt_position=50)
+    await _setup(hass, **{CONF_TILT_ENABLED: True})
+
+    await hass.services.async_call(
+        "cover", "close_cover_tilt", {"entity_id": TARGET}, blocking=True
+    )
+    await hass.services.async_call(
+        "cover", "open_cover_tilt", {"entity_id": TARGET}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert [
+        call["tilt_position"] for call in source_calls.of("set_cover_tilt_position")
+    ] == [0, 100]
+    assert source_calls.of("close_cover_tilt") == []
+    assert source_calls.of("open_cover_tilt") == []
+
+
+async def test_full_tilt_falls_back_to_open_close_tilt_without_set_support(
+    hass: HomeAssistant, source_calls: SourceCalls
+) -> None:
+    """A source that cannot address an angle still gets open/close tilt."""
+    features = (
+        POSITIONABLE | CoverEntityFeature.OPEN_TILT | CoverEntityFeature.CLOSE_TILT
+    )
+    _set_source(hass, "open", 50, features=features, current_tilt_position=50)
+    await _setup(hass, **{CONF_TILT_ENABLED: True})
+
+    await hass.services.async_call(
+        "cover", "open_cover_tilt", {"entity_id": TARGET}, blocking=True
+    )
+    await hass.services.async_call(
+        "cover", "close_cover_tilt", {"entity_id": TARGET}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert len(source_calls.of("open_cover_tilt")) == 1
+    assert len(source_calls.of("close_cover_tilt")) == 1
+    assert source_calls.of("set_cover_tilt_position") == []

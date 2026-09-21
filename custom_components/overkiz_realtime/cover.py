@@ -539,17 +539,19 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         target = clamp_position(target)
         features = self._source_features()
 
-        if target >= POSITION_OPEN and features & CoverEntityFeature.OPEN_TILT:
-            service: str = SERVICE_OPEN_COVER_TILT
-            data: dict[str, Any] = {}
-        elif target <= POSITION_CLOSED and features & CoverEntityFeature.CLOSE_TILT:
-            service, data = SERVICE_CLOSE_COVER_TILT, {}
-        elif features & CoverEntityFeature.SET_TILT_POSITION:
-            service = SERVICE_SET_COVER_TILT_POSITION
-            data = {ATTR_TILT_POSITION: round(target)}
+        if features & CoverEntityFeature.SET_TILT_POSITION:
+            # Preferred for every angle, the end stops included. On a Somfy io
+            # venetian blind, open_cover_tilt and close_cover_tilt only nudge
+            # the slats -- the motor twitches and the slats stay where they
+            # were -- while set_cover_tilt_position drives them to the angle
+            # that was asked for. Verified on an io ExteriorVenetianBlind.
+            service: str = SERVICE_SET_COVER_TILT_POSITION
+            data: dict[str, Any] = {ATTR_TILT_POSITION: round(target)}
         elif target >= POSITION_OPEN:
             service, data = SERVICE_OPEN_COVER_TILT, {}
         else:
+            # Without set_cover_tilt_position an intermediate angle cannot be
+            # addressed at all, so the closed end stop is the best on offer.
             service, data = SERVICE_CLOSE_COVER_TILT, {}
 
         # Open the window before the command goes out: with blocking=True the
