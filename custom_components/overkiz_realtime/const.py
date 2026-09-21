@@ -1,4 +1,4 @@
-"""Konstanten für Overkiz Realtime Position."""
+"""Constants for Overkiz Realtime Position."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ PLATFORMS: Final = ["cover"]
 
 STORAGE_VERSION: Final = 1
 
-# Konfiguration
+# Configuration
 CONF_SOURCE_ENTITY_ID: Final = "source_entity_id"
 CONF_TRAVEL_TIME_UP: Final = "travel_time_up"
 CONF_TRAVEL_TIME_DOWN: Final = "travel_time_down"
@@ -26,8 +26,26 @@ CONF_RESYNC_THRESHOLD: Final = "resync_threshold"
 CONF_AUTO_CALIBRATION: Final = "auto_calibration"
 CONF_CALIBRATION_WEIGHT: Final = "calibration_weight"
 CONF_TIMED_POSITIONING: Final = "timed_positioning"
+CONF_SOURCE_HANDLING: Final = "source_handling"
 
-# Voreinstellungen
+# How the original Overkiz entity is treated once the realtime entity exists.
+# The source entity is never disabled or deleted: this integration reads its
+# state and forwards every command to it, so a disabled source would break the
+# realtime entity along with it.
+SOURCE_HANDLING_KEEP: Final = "keep"
+SOURCE_HANDLING_HIDE: Final = "hide"
+SOURCE_HANDLING_TAKEOVER: Final = "takeover"
+SOURCE_HANDLING_OPTIONS: Final = (
+    SOURCE_HANDLING_KEEP,
+    SOURCE_HANDLING_HIDE,
+    SOURCE_HANDLING_TAKEOVER,
+)
+
+# Suffix appended to the source entity_id when the realtime entity takes the
+# original one over.
+SOURCE_TAKEOVER_SUFFIX: Final = "overkiz"
+
+# Defaults
 DEFAULT_TRAVEL_TIME: Final = 25.0
 DEFAULT_TILT_TIME: Final = 1.5
 DEFAULT_UPDATE_INTERVAL: Final = 0.5
@@ -38,11 +56,17 @@ DEFAULT_CALIBRATION_WEIGHT: Final = 0.2
 DEFAULT_TIMED_POSITIONING: Final = True
 DEFAULT_TILT_FOLLOWS_POSITION: Final = True
 
-# Eine einzelne Messung darf höchstens so stark vom bisherigen Wert abweichen,
-# sonst wird sie als Ausreisser verworfen.
+# Offered when setting up a new entry. Entries created before this option
+# existed fall back to SOURCE_HANDLING_KEEP so that an update never hides an
+# entity behind the user's back.
+DEFAULT_SOURCE_HANDLING: Final = SOURCE_HANDLING_HIDE
+FALLBACK_SOURCE_HANDLING: Final = SOURCE_HANDLING_KEEP
+
+# A single measurement may deviate from the current value by at most this
+# factor, otherwise it is rejected as an outlier.
 CALIBRATION_MAX_DEVIATION: Final = 0.5
 
-# Zusätzliche Entitäts-Attribute
+# Additional entity attributes
 ATTR_SOURCE_ENTITY_ID: Final = "source_entity_id"
 ATTR_TRAVEL_TIME_UP: Final = "travel_time_up"
 ATTR_TRAVEL_TIME_DOWN: Final = "travel_time_down"
@@ -63,13 +87,13 @@ ATTR_KNOWN_POSITION: Final = "position"
 ATTR_KNOWN_TILT_POSITION: Final = "tilt_position"
 ATTR_DIRECTION: Final = "direction"
 
-# Zustände der Quell-Entität
+# States of the source entity
 STATE_SRC_OPENING: Final = "opening"
 STATE_SRC_CLOSING: Final = "closing"
 STATE_SRC_OPEN: Final = "open"
 STATE_SRC_CLOSED: Final = "closed"
 
-# Speicherschlüssel für die gelernten Fahrzeiten
+# Storage keys for the learned travel times
 STORAGE_TRAVEL_TIME_UP: Final = "learned_travel_time_up"
 STORAGE_TRAVEL_TIME_DOWN: Final = "learned_travel_time_down"
 STORAGE_TILT_TIME_UP: Final = "learned_tilt_time_up"
@@ -78,3 +102,9 @@ STORAGE_LAST_CALIBRATION: Final = "last_calibration"
 STORAGE_SAMPLES: Final = "calibration_samples"
 STORAGE_LAST_POSITION: Final = "last_position"
 STORAGE_LAST_TILT_POSITION: Final = "last_tilt_position"
+
+# Storage keys bookkeeping what we changed on the source entity, so that it can
+# be restored exactly as it was.
+STORAGE_SOURCE_HIDDEN_BY_US: Final = "source_hidden_by_us"
+STORAGE_SOURCE_RENAMED_FROM: Final = "source_renamed_from"
+STORAGE_SOURCE_RENAMED_TO: Final = "source_renamed_to"

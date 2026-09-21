@@ -1,4 +1,4 @@
-"""Config- und Options-Flow für Overkiz Realtime Position."""
+"""Config and options flow for Overkiz Realtime Position."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from .const import (
     CONF_COMMAND_DELAY,
     CONF_RESYNC_THRESHOLD,
     CONF_SOURCE_ENTITY_ID,
+    CONF_SOURCE_HANDLING,
     CONF_TILT_ENABLED,
     CONF_TILT_FOLLOWS_POSITION,
     CONF_TILT_TIME_DOWN,
@@ -39,12 +40,15 @@ from .const import (
     DEFAULT_CALIBRATION_WEIGHT,
     DEFAULT_COMMAND_DELAY,
     DEFAULT_RESYNC_THRESHOLD,
+    DEFAULT_SOURCE_HANDLING,
     DEFAULT_TILT_FOLLOWS_POSITION,
     DEFAULT_TILT_TIME,
     DEFAULT_TIMED_POSITIONING,
     DEFAULT_TRAVEL_TIME,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    FALLBACK_SOURCE_HANDLING,
+    SOURCE_HANDLING_OPTIONS,
 )
 
 TILT_FEATURES = (
@@ -58,7 +62,7 @@ TILT_FEATURES = (
 def _seconds_selector(
     minimum: float, maximum: float, step: float = 0.1
 ) -> selector.NumberSelector:
-    """Zahlenauswahl in Sekunden."""
+    """Number selector in seconds."""
     return selector.NumberSelector(
         selector.NumberSelectorConfig(
             min=minimum,
@@ -70,8 +74,19 @@ def _seconds_selector(
     )
 
 
+def _source_handling_selector() -> selector.SelectSelector:
+    """Pick what happens to the original Overkiz entity."""
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(SOURCE_HANDLING_OPTIONS),
+            mode=selector.SelectSelectorMode.LIST,
+            translation_key=CONF_SOURCE_HANDLING,
+        )
+    )
+
+
 def _basic_schema(defaults: dict[str, Any]) -> dict[Any, Any]:
-    """Felder, die in Config- und Options-Flow identisch sind."""
+    """Fields that are identical in the config and the options flow."""
     return {
         vol.Required(
             CONF_TRAVEL_TIME_UP,
@@ -97,8 +112,12 @@ def _basic_schema(defaults: dict[str, Any]) -> dict[Any, Any]:
 
 
 def _advanced_schema(defaults: dict[str, Any]) -> dict[Any, Any]:
-    """Feinabstimmung, nur im Options-Flow sichtbar."""
+    """Fine tuning, only shown in the options flow."""
     return {
+        vol.Required(
+            CONF_SOURCE_HANDLING,
+            default=defaults.get(CONF_SOURCE_HANDLING, FALLBACK_SOURCE_HANDLING),
+        ): _source_handling_selector(),
         vol.Required(
             CONF_TILT_FOLLOWS_POSITION,
             default=defaults.get(
@@ -145,18 +164,18 @@ def _advanced_schema(defaults: dict[str, Any]) -> dict[Any, Any]:
 
 
 class OverkizRealtimeConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Einrichtung über die Benutzeroberfläche."""
+    """Set up through the user interface."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        """Flow initialisieren."""
+        """Initialise the flow."""
         self._source_entity_id: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Quell-Entität auswählen."""
+        """Pick the source entity."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -189,7 +208,7 @@ class OverkizRealtimeConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_settings(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Name und Fahrzeiten erfassen."""
+        """Collect the name and the travel times."""
         assert self._source_entity_id is not None
 
         if user_input is not None:
@@ -228,9 +247,12 @@ class OverkizRealtimeConfigFlow(ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {
                 vol.Required(
-                    CONF_NAME, default=f"{suggested_name} Echtzeit"
+                    CONF_NAME, default=f"{suggested_name} Realtime"
                 ): selector.TextSelector(),
                 **_basic_schema({CONF_TILT_ENABLED: tilt_detected}),
+                vol.Required(
+                    CONF_SOURCE_HANDLING, default=DEFAULT_SOURCE_HANDLING
+                ): _source_handling_selector(),
             }
         )
 
@@ -244,21 +266,21 @@ class OverkizRealtimeConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
-        """Options-Flow zurückgeben."""
+        """Return the options flow."""
         return OverkizRealtimeOptionsFlow(config_entry)
 
 
 class OverkizRealtimeOptionsFlow(OptionsFlow):
-    """Nachträgliche Anpassung aller Parameter."""
+    """Adjust every parameter after the fact."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
-        """Options-Flow mit dem Eintrag initialisieren."""
+        """Initialise the options flow with the config entry."""
         self._entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Optionen bearbeiten."""
+        """Edit the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
