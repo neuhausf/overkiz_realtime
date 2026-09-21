@@ -275,3 +275,32 @@ async def test_source_renamed_by_the_user_is_still_found(
     hidden = _source_entity(hass, source)
     assert hidden.entity_id == "cover.office_shutter"
     assert hidden.hidden_by is er.RegistryEntryHider.INTEGRATION
+
+
+async def test_takeover_reclaims_the_id_on_a_later_setup(
+    hass: HomeAssistant, source: er.RegistryEntry
+) -> None:
+    """A takeover that did not finish is put right on the next setup.
+
+    Claiming the freed entity_id can fail once -- if the source entity is slow
+    to vacate it, for instance. The source has moved by then, so the next setup
+    has to notice the realtime entity is on the wrong id and move it over.
+    """
+    entry = await _setup(hass, source, SOURCE_HANDLING_TAKEOVER)
+    assert _realtime_entity_id(hass, entry) == "cover.buro1"
+
+    # Put the realtime entity back on a different id, as an interrupted
+    # takeover would have left it.
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    er.async_get(hass).async_update_entity(
+        "cover.buro1", new_entity_id="cover.buro_1_realtime"
+    )
+    await hass.async_block_till_done()
+    assert _realtime_entity_id(hass, entry) == "cover.buro_1_realtime"
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert _realtime_entity_id(hass, entry) == "cover.buro1"
+    assert _source_entity(hass, source).entity_id == "cover.buro1_overkiz"

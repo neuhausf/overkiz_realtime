@@ -201,8 +201,12 @@ async def _async_take_over_entity_id(
     renamed_from = bookkeeping.get(STORAGE_SOURCE_RENAMED_FROM)
 
     if renamed_to == source_entity_id and renamed_from:
-        # The swap already happened on an earlier run; nothing has to move.
-        return SourceHandling(source_entity_id, str(renamed_from))
+        # The source already moved on an earlier run. The realtime entity is
+        # normally on the freed id by now, but reconcile anyway: if claiming it
+        # failed back then, this is where it gets put right.
+        desired = str(renamed_from)
+        _async_claim_entity_id(registry, entry, desired)
+        return SourceHandling(source_entity_id, desired)
 
     desired = source_entity_id
     moved_to = _async_free_entity_id(hass, desired, SOURCE_TAKEOVER_SUFFIX)
@@ -233,7 +237,11 @@ def _async_claim_entity_id(
     if own_entity_id is None or own_entity_id == desired:
         return
 
-    if registry.async_is_registered(desired):
+    # The registry refuses an entity_id that is still registered or still in
+    # the state machine, and raises rather than returning a flag.
+    if registry.async_is_registered(
+        desired
+    ) or not registry.hass.states.async_available(desired):
         LOGGER.warning(
             "Cannot move %s to %s, that entity_id is taken", own_entity_id, desired
         )
