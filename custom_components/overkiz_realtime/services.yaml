@@ -1,9 +1,9 @@
 set_known_position:
-  name: Bekannte Position setzen
+  name: Set known position
   description: >-
-    Setzt die berechnete Position ohne einen Fahrbefehl zu senden. Nützlich,
-    wenn die Store von Hand oder über eine Funkfernbedienung verstellt wurde
-    und die Berechnung wieder eingenordet werden muss.
+    Sets the calculated position without sending a movement command. Useful
+    after the cover has been moved by hand or with a radio remote and the
+    calculation needs to be put straight again.
   target:
     entity:
       integration: overkiz_realtime
@@ -11,7 +11,7 @@ set_known_position:
   fields:
     position:
       name: Position
-      description: Tatsächliche Position der Store (0 = geschlossen, 100 = offen).
+      description: Actual position of the cover (0 = closed, 100 = open).
       required: true
       selector:
         number:
@@ -20,8 +20,8 @@ set_known_position:
           step: 1
           unit_of_measurement: "%"
     tilt_position:
-      name: Lamellenposition
-      description: Tatsächliche Lamellenposition, falls Lamellen aktiviert sind.
+      name: Tilt position
+      description: Actual tilt position, if tilt calculation is enabled.
       required: false
       selector:
         number:
@@ -31,18 +31,18 @@ set_known_position:
           unit_of_measurement: "%"
 
 set_travel_times:
-  name: Fahrzeiten setzen
+  name: Set travel times
   description: >-
-    Überschreibt die Fahrzeiten zur Laufzeit und speichert sie dauerhaft.
-    Die Werte gelten jeweils für eine komplette Fahrt von 0 % auf 100 %.
+    Overrides the travel times at runtime and stores them permanently. Each
+    value covers one complete run from 0 % to 100 %.
   target:
     entity:
       integration: overkiz_realtime
       domain: cover
   fields:
     travel_time_up:
-      name: Fahrzeit hoch
-      description: Sekunden für eine komplette Auffahrt.
+      name: Travel time up
+      description: Seconds for a full opening run.
       required: false
       selector:
         number:
@@ -52,8 +52,8 @@ set_travel_times:
           mode: box
           unit_of_measurement: s
     travel_time_down:
-      name: Fahrzeit runter
-      description: Sekunden für eine komplette Abfahrt.
+      name: Travel time down
+      description: Seconds for a full closing run.
       required: false
       selector:
         number:
@@ -63,8 +63,8 @@ set_travel_times:
           mode: box
           unit_of_measurement: s
     tilt_time_up:
-      name: Lamellenzeit auf
-      description: Sekunden, bis die Lamellen vollständig geöffnet sind.
+      name: Tilt time open
+      description: Seconds until the slats are fully open.
       required: false
       selector:
         number:
@@ -74,8 +74,8 @@ set_travel_times:
           mode: box
           unit_of_measurement: s
     tilt_time_down:
-      name: Lamellenzeit zu
-      description: Sekunden, bis die Lamellen vollständig geschlossen sind.
+      name: Tilt time closed
+      description: Seconds until the slats are fully closed.
       required: false
       selector:
         number:
@@ -86,27 +86,26 @@ set_travel_times:
           unit_of_measurement: s
 
 calibrate:
-  name: Kalibrierfahrt
+  name: Calibration run
   description: >-
-    Fährt die Store komplett und misst die tatsächlichen Fahrzeiten anhand der
-    Rückmeldungen des Gateways. Setzt voraus, dass die Quell-Entität eine
-    Position meldet.
+    Runs the cover end to end and measures the actual travel times from the
+    gateway's feedback. Requires the source entity to report a position.
   target:
     entity:
       integration: overkiz_realtime
       domain: cover
   fields:
     direction:
-      name: Richtung
-      description: Welche Fahrzeit gemessen werden soll.
+      name: Direction
+      description: Which travel time to measure.
       required: false
       default: both
       selector:
         select:
           options:
-            - label: Beide Richtungen
+            - label: Both directions
               value: both
-            - label: Nur Auffahrt
+            - label: Opening run only
               value: up
-            - label: Nur Abfahrt
+            - label: Closing run only
               value: down

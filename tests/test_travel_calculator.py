@@ -1,4 +1,4 @@
-"""Tests für die zeitbasierte Positionsberechnung."""
+"""Tests for the time based position calculation."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from travel_calculator import (
 
 
 class FakeClock(TravelCalculator):
-    """Rechner mit steuerbarer Uhr."""
+    """Calculator with a controllable clock."""
 
     def __init__(self, travel_time_down: float, travel_time_up: float) -> None:
         self.fake_time = 1000.0
@@ -42,7 +42,7 @@ class FakeClock(TravelCalculator):
 
 @pytest.fixture
 def calc() -> FakeClock:
-    """Store mit 20 s Auffahrt und 25 s Abfahrt."""
+    """A cover with a 20 s opening run and a 25 s closing run."""
     calculator = FakeClock(travel_time_down=25.0, travel_time_up=20.0)
     calculator.set_position(POSITION_CLOSED)
     return calculator
@@ -118,7 +118,7 @@ def test_update_position_keeps_direction(calc: FakeClock) -> None:
     calc.start_travel_up()
     calc.tick(10)
 
-    # Gateway meldet 35 % statt der berechneten 50 %
+    # The gateway reports 35 % instead of the calculated 50 %
     calc.update_position(35.0)
     assert calc.travel_direction is TravelStatus.DIRECTION_UP
     assert calc.current_position() == pytest.approx(35.0)
@@ -166,7 +166,7 @@ def test_measurement_scales_to_full_travel() -> None:
     measurement.add(0.0, 10.0)
     measurement.add(12.0, 70.0)
 
-    # 60 % in 12 s -> 20 s für 100 %
+    # 60 % in 12 s -> 20 s for 100 %
     assert measurement.full_travel_time() == pytest.approx(20.0)
 
 

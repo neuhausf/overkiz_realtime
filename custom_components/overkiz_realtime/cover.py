@@ -1,4 +1,4 @@
-"""Cover-Plattform mit berechneter Echtzeitposition."""
+"""Cover platform with a calculated realtime position."""
 
 from __future__ import annotations
 
@@ -73,7 +73,6 @@ from .const import (
     CONF_CALIBRATION_WEIGHT,
     CONF_COMMAND_DELAY,
     CONF_RESYNC_THRESHOLD,
-    CONF_SOURCE_ENTITY_ID,
     CONF_TILT_ENABLED,
     CONF_TILT_FOLLOWS_POSITION,
     CONF_TILT_TIME_DOWN,
@@ -122,10 +121,10 @@ TILT_FEATURES = (
     | CoverEntityFeature.SET_TILT_POSITION
 )
 
-# Wartezeit nach einem Kalibrier-Kommando, bis das Gateway die Fahrt meldet
+# Grace period after a calibration command until the gateway reports the run
 CALIBRATION_START_GRACE = 6.0
 
-# Dienste, die eine Fahrt der Quell-Entität auslösen können
+# Services that can start a run on the source entity
 _EXTERNAL_MOVE_SERVICES = {
     SERVICE_OPEN_COVER,
     SERVICE_CLOSE_COVER,
@@ -139,11 +138,10 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Cover-Entität für einen Konfigurationseintrag anlegen."""
+    """Create the cover entity for a config entry."""
     runtime: RealtimeRuntimeData = hass.data[DOMAIN][entry.entry_id]
-    source_entity_id: str = entry.data[CONF_SOURCE_ENTITY_ID]
 
-    async_add_entities([OverkizRealtimeCover(hass, entry, runtime, source_entity_id)])
+    async_add_entities([OverkizRealtimeCover(hass, entry, runtime)])
 
     platform = entity_platform.async_get_current_platform()
 
@@ -187,7 +185,7 @@ async def async_setup_entry(
 
 
 class OverkizRealtimeCover(CoverEntity, RestoreEntity):
-    """Cover, dessen Position während der Fahrt interpoliert wird."""
+    """Cover whose position is interpolated while it travels."""
 
     _attr_should_poll = False
     _attr_has_entity_name = False
@@ -197,15 +195,21 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         hass: HomeAssistant,
         entry: ConfigEntry,
         runtime: RealtimeRuntimeData,
-        source_entity_id: str,
     ) -> None:
-        """Entität aufsetzen."""
+        """Set the entity up."""
         self._entry = entry
         self._runtime = runtime
-        self._source_entity_id = source_entity_id
+        self._source_entity_id = runtime.source_entity_id
 
         self._attr_unique_id = entry.entry_id
         self._attr_name = entry.title
+
+        # In takeover mode the source entity has just vacated its entity_id.
+        # Pre-setting it here is how an entity suggests its own id to the
+        # registry on first creation; once registered the registry wins and
+        # source_entity.py keeps the id in sync instead.
+        if runtime.claim_entity_id:
+            self.entity_id = runtime.claim_entity_id
 
         options = entry.options
         self._tilt_enabled = bool(options.get(CONF_TILT_ENABLED, False))
@@ -273,10 +277,10 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         self._unsub_auto_stop: Any = None
         self._unsub_delayed_start: Any = None
 
-        # Gerät der Quell-Entität übernehmen, damit beide Entitäten
-        # beim gleichen Somfy-Gerät erscheinen.
+        # Adopt the source entity's device, so both entities show up under
+        # the same Somfy device.
         registry = er.async_get(hass)
-        source_entry = registry.async_get(source_entity_id)
+        source_entry = registry.async_get(self._source_entity_id)
         if (
             source_entry is not None
             and source_entry.device_id
@@ -285,11 +289,11 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
             self.device_entry = device
 
     # ------------------------------------------------------------------
-    # Lebenszyklus
+    # Lifecycle
     # ------------------------------------------------------------------
 
     async def async_added_to_hass(self) -> None:
-        """Auf die Quelle hören und den Startzustand herstellen."""
+        """Listen to the source and establish the initial state."""
         await super().async_added_to_hass()
 
         self.async_on_remove(
@@ -326,19 +330,19 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
                 self._tilt_calc.set_position(float(tilt))
 
     async def async_will_remove_from_hass(self) -> None:
-        """Timer abräumen."""
+        """Tear the timers down."""
         self._async_stop_updater()
         self._cancel_auto_stop()
         self._cancel_delayed_start()
         await super().async_will_remove_from_hass()
 
     # ------------------------------------------------------------------
-    # Eigenschaften
+    # Properties
     # ------------------------------------------------------------------
 
     @property
     def available(self) -> bool:
-        """Verfügbar, solange die Quell-Entität verfügbar ist."""
+        """Available for as long as the source entity is available."""
         state = self.hass.states.get(self._source_entity_id)
         return state is not None and state.state not in (
             STATE_UNAVAILABLE,
@@ -347,7 +351,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @property
     def device_class(self) -> CoverDeviceClass | None:
-        """Geräteklasse der Quelle übernehmen."""
+        """Adopt the device class of the source."""
         state = self.hass.states.get(self._source_entity_id)
         if state is not None and (
             device_class := state.attributes.get(ATTR_DEVICE_CLASS)
@@ -360,7 +364,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @property
     def supported_features(self) -> CoverEntityFeature:
-        """Unterstützte Funktionen, abgeleitet von der Quelle."""
+        """Supported features, derived from the source."""
         features = (
             CoverEntityFeature.OPEN
             | CoverEntityFeature.CLOSE
@@ -375,38 +379,38 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @property
     def current_cover_position(self) -> int | None:
-        """Berechnete Position, 0 = geschlossen, 100 = offen."""
+        """Calculated position, 0 = closed, 100 = open."""
         if not self._calc.position_known:
             return None
         return round(self._calc.current_position())
 
     @property
     def current_cover_tilt_position(self) -> int | None:
-        """Berechnete Lamellenposition."""
+        """Calculated tilt position."""
         if not self._tilt_enabled or not self._tilt_calc.position_known:
             return None
         return round(self._tilt_calc.current_position())
 
     @property
     def is_opening(self) -> bool:
-        """True während einer Auffahrt."""
+        """True while opening."""
         return self._calc.is_opening()
 
     @property
     def is_closing(self) -> bool:
-        """True während einer Abfahrt."""
+        """True while closing."""
         return self._calc.is_closing()
 
     @property
     def is_closed(self) -> bool | None:
-        """True, wenn die Store vollständig geschlossen ist."""
+        """True when the cover is fully closed."""
         if not self._calc.position_known:
             return None
         return self.current_cover_position == 0
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Zusatzinformationen zu Berechnung und Kalibrierung."""
+        """Extra information about the calculation and the calibration."""
         attributes: dict[str, Any] = {
             ATTR_SOURCE_ENTITY_ID: self._source_entity_id,
             ATTR_TRAVEL_TIME_UP: round(self._calc.travel_time_up, 2),
@@ -434,23 +438,23 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         return attributes
 
     # ------------------------------------------------------------------
-    # Kommandos
+    # Commands
     # ------------------------------------------------------------------
 
     async def async_open_cover(self, **kwargs: Any) -> None:
-        """Store vollständig öffnen."""
+        """Open the cover fully."""
         await self._async_move_to(POSITION_OPEN)
 
     async def async_close_cover(self, **kwargs: Any) -> None:
-        """Store vollständig schliessen."""
+        """Close the cover fully."""
         await self._async_move_to(POSITION_CLOSED)
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
-        """Store auf eine Zielposition fahren."""
+        """Move the cover to a target position."""
         await self._async_move_to(float(kwargs[ATTR_POSITION]))
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
-        """Fahrt anhalten und die berechnete Position einfrieren."""
+        """Stop the run and freeze the calculated position."""
         self._cancel_auto_stop()
         self._cancel_delayed_start()
         if self._source_features() & CoverEntityFeature.STOP:
@@ -458,19 +462,19 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         self._freeze()
 
     async def async_open_cover_tilt(self, **kwargs: Any) -> None:
-        """Lamellen vollständig öffnen."""
+        """Open the slats fully."""
         await self._async_move_tilt_to(POSITION_OPEN)
 
     async def async_close_cover_tilt(self, **kwargs: Any) -> None:
-        """Lamellen vollständig schliessen."""
+        """Close the slats fully."""
         await self._async_move_tilt_to(POSITION_CLOSED)
 
     async def async_set_cover_tilt_position(self, **kwargs: Any) -> None:
-        """Lamellen auf eine Zielposition fahren."""
+        """Move the slats to a target position."""
         await self._async_move_tilt_to(float(kwargs[ATTR_TILT_POSITION]))
 
     async def async_stop_cover_tilt(self, **kwargs: Any) -> None:
-        """Lamellenbewegung anhalten."""
+        """Stop the tilt movement."""
         features = self._source_features()
         if features & CoverEntityFeature.STOP_TILT:
             await self._async_call_source(SERVICE_STOP_COVER_TILT)
@@ -480,7 +484,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         self._async_refresh_state()
 
     async def _async_move_to(self, target: float) -> None:
-        """Fahrbefehl an die Quelle senden und die Berechnung starten."""
+        """Send a movement command to the source and start the calculation."""
         target = clamp_position(target)
         current = self._calc.current_position()
         features = self._source_features()
@@ -502,8 +506,8 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
             auto_stop = True
         else:
             raise ServiceValidationError(
-                f"{self._source_entity_id} unterstützt keine Zielposition und die "
-                "zeitgesteuerte Positionierung ist deaktiviert."
+                f"{self._source_entity_id} does not support target positions "
+                "and timed positioning is disabled."
             )
 
         self._cancel_auto_stop()
@@ -512,10 +516,10 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         self._schedule_travel(target, auto_stop)
 
     async def _async_move_tilt_to(self, target: float) -> None:
-        """Lamellenbefehl an die Quelle senden und die Berechnung starten."""
+        """Send a tilt command to the source and start the calculation."""
         if not self._tilt_enabled:
             raise ServiceValidationError(
-                "Die Lamellenberechnung ist für diese Entität nicht aktiviert."
+                "Tilt calculation is not enabled for this entity."
             )
 
         target = clamp_position(target)
@@ -542,7 +546,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
     async def _async_call_source(
         self, service: str, data: dict[str, Any] | None = None
     ) -> None:
-        """Dienst auf der Quell-Entität ausführen."""
+        """Call a service on the source entity."""
         context = Context(
             parent_id=self._context.id if self._context is not None else None
         )
@@ -557,12 +561,12 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         )
 
     # ------------------------------------------------------------------
-    # Fahrtsteuerung
+    # Travel control
     # ------------------------------------------------------------------
 
     @callback
     def _schedule_travel(self, target: float, auto_stop: bool = False) -> None:
-        """Fahrt starten, ggf. nach der konfigurierten Kommandoverzögerung."""
+        """Start a run, after the configured command delay if there is one."""
         if self._command_delay <= 0:
             self._begin_travel(target, auto_stop)
             return
@@ -578,7 +582,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @callback
     def _begin_travel(self, target: float, auto_stop: bool = False) -> None:
-        """Berechnung einer Fahrt beginnen."""
+        """Begin calculating a run."""
         self._calc.start_travel(target)
 
         if not self._calc.is_traveling():
@@ -606,18 +610,18 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         self._async_refresh_state()
 
     async def _async_auto_stop(self, _now: datetime) -> None:
-        """Zeitgesteuerter Halt, wenn die Quelle keine Zielposition kennt."""
+        """Timed stop, for sources that cannot target a position themselves."""
         self._unsub_auto_stop = None
         try:
             await self._async_call_source(SERVICE_STOP_COVER)
         except HomeAssistantError as err:
-            LOGGER.warning("Stop-Kommando fehlgeschlagen: %s", err)
+            LOGGER.warning("Stop command failed: %s", err)
         self._calc.stop()
         self._async_refresh_state()
 
     @callback
     def _freeze(self) -> None:
-        """Berechnung an der aktuellen Position anhalten."""
+        """Halt the calculation at the current position."""
         self._calc.stop()
         if self._tilt_enabled:
             self._tilt_calc.stop()
@@ -628,7 +632,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @callback
     def _async_start_updater(self) -> None:
-        """Periodische Neuberechnung während der Fahrt starten."""
+        """Start recalculating periodically while travelling."""
         if self._unsub_updater is not None:
             return
         self._unsub_updater = async_track_time_interval(
@@ -637,28 +641,28 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @callback
     def _async_stop_updater(self) -> None:
-        """Periodische Neuberechnung beenden."""
+        """Stop the periodic recalculation."""
         if self._unsub_updater is not None:
             self._unsub_updater()
             self._unsub_updater = None
 
     @callback
     def _cancel_auto_stop(self) -> None:
-        """Geplanten zeitgesteuerten Halt verwerfen."""
+        """Discard a scheduled timed stop."""
         if self._unsub_auto_stop is not None:
             self._unsub_auto_stop()
             self._unsub_auto_stop = None
 
     @callback
     def _cancel_delayed_start(self) -> None:
-        """Verzögerten Fahrtstart verwerfen."""
+        """Discard a delayed start."""
         if self._unsub_delayed_start is not None:
             self._unsub_delayed_start()
             self._unsub_delayed_start = None
 
     @callback
     def _async_tick(self, _now: datetime) -> None:
-        """Zyklische Neuberechnung während der Fahrt."""
+        """Periodic recalculation while travelling."""
         if self._calc.is_traveling() and self._calc.position_reached():
             self._calc.stop()
         if (
@@ -677,35 +681,35 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @callback
     def _async_refresh_state(self) -> None:
-        """Zustand schreiben, sofern die Entität bereits registriert ist."""
+        """Write the state, provided the entity is already registered."""
         if self.hass is not None and self.entity_id:
             self.async_write_ha_state()
 
     # ------------------------------------------------------------------
-    # Rückmeldungen der Quelle
+    # Feedback from the source
     # ------------------------------------------------------------------
 
     @callback
     def _source_features(self) -> CoverEntityFeature:
-        """Von der Quelle gemeldete Funktionen."""
+        """Features reported by the source."""
         if (state := self.hass.states.get(self._source_entity_id)) is None:
             return CoverEntityFeature(0)
         return CoverEntityFeature(int(state.attributes.get(ATTR_SUPPORTED_FEATURES, 0)))
 
     @callback
     def _position_from_state(self, state: State) -> float | None:
-        """Position aus einem Quellzustand lesen."""
+        """Read the position out of a source state."""
         position = state.attributes.get(ATTR_CURRENT_POSITION)
         if position is not None:
             return clamp_position(float(position))
-        # Geräte ohne Positionsrückmeldung melden wenigstens "geschlossen"
+        # Devices without position feedback at least report "closed"
         if state.state == STATE_SRC_CLOSED:
             return POSITION_CLOSED
         return None
 
     @callback
     def _async_source_changed(self, event: Event) -> None:
-        """Zustandsänderung der Quell-Entität verarbeiten."""
+        """Process a state change of the source entity."""
         new_state: State | None = event.data.get("new_state")
 
         if new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
@@ -729,8 +733,8 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         elif not self._calc.is_traveling():
             self._handle_source_idle(position, tilt)
         elif position is not None:
-            # Wir rechnen bereits, die Quelle hat die Fahrt noch nicht
-            # gemeldet: nur grobe Abweichungen korrigieren.
+            # We are already calculating and the source has not reported the
+            # run yet: only correct gross deviations.
             self._resync(position)
 
         self._async_refresh_state()
@@ -739,11 +743,11 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
     def _handle_source_moving(
         self, moving_up: bool, position: float | None, was_moving: bool
     ) -> None:
-        """Quelle meldet eine laufende Fahrt.
+        """The source reports a run in progress.
 
-        Eine neue Fahrt wird nur beim Übergang in den Bewegungszustand oder bei
-        einer Richtungsumkehr gestartet. Meldet das Gateway die Fahrt nur
-        verzögert zu Ende, darf das keine neue Vollfahrt auslösen.
+        A new run is only started on the transition into the moving state or on
+        a reversal of direction. A late "finished" report from the gateway must
+        never kick off a fresh full run.
         """
         wrong_direction = (moving_up and self._calc.is_closing()) or (
             not moving_up and self._calc.is_opening()
@@ -767,7 +771,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
     def _handle_travel_finished(
         self, position: float | None, tilt: float | None
     ) -> None:
-        """Quelle meldet das Ende einer Fahrt."""
+        """The source reports the end of a run."""
         self._cancel_auto_stop()
 
         if position is not None and self._measurement is not None:
@@ -792,7 +796,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @callback
     def _handle_source_idle(self, position: float | None, tilt: float | None) -> None:
-        """Quelle steht still und meldet eine Position."""
+        """The source is idle and reports a position."""
         if position is not None:
             self._calc.set_position(position)
             self._position_confirmed = True
@@ -802,7 +806,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @callback
     def _resync(self, position: float) -> None:
-        """Grössere Abweichungen zur Rückmeldung des Gateways korrigieren."""
+        """Correct larger deviations from the gateway feedback."""
         if self._resync_threshold >= POSITION_OPEN:
             return
 
@@ -811,7 +815,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
             return
 
         LOGGER.debug(
-            "%s: Position wird von %.1f auf %.1f korrigiert",
+            "%s: correcting position from %.1f to %.1f",
             self.entity_id,
             estimated,
             position,
@@ -820,10 +824,10 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
 
     @callback
     def _async_service_called(self, event: Event) -> None:
-        """Fahrbefehle erkennen, die direkt an die Quell-Entität gehen.
+        """Detect movement commands sent straight to the source entity.
 
-        Damit bleibt die Berechnung auch dann korrekt, wenn eine Automation
-        oder das Dashboard die originale Overkiz-Entität steuert.
+        This keeps the calculation correct even when an automation or the
+        dashboard drives the original Overkiz entity.
         """
         data = event.data
         if data.get("domain") != COVER_DOMAIN:
@@ -869,12 +873,12 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         self._schedule_travel(target)
 
     # ------------------------------------------------------------------
-    # Kalibrierung
+    # Calibration
     # ------------------------------------------------------------------
 
     @callback
     def _apply_calibration(self) -> None:
-        """Gemessene Fahrzeit in die gelernten Werte einrechnen."""
+        """Fold a measured travel time into the learned values."""
         measurement = self._measurement
         self._measurement = None
 
@@ -893,7 +897,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
             and not self._force_calibration
         ):
             LOGGER.debug(
-                "%s: Messung %.1fs verworfen (aktuell %.1fs)",
+                "%s: measurement of %.1fs rejected (currently %.1fs)",
                 self.entity_id,
                 measured,
                 current,
@@ -919,21 +923,21 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         self._runtime.save()
 
         LOGGER.info(
-            "%s: Fahrzeit %s auf %.1f s angepasst (Messung %.1f s)",
+            "%s: travel time %s adjusted to %.1f s (measured %.1f s)",
             self.entity_id,
-            "hoch" if going_up else "runter",
+            "up" if going_up else "down",
             updated,
             measured,
         )
 
     # ------------------------------------------------------------------
-    # Dienste
+    # Services
     # ------------------------------------------------------------------
 
     async def async_set_known_position(
         self, position: float, tilt_position: float | None = None
     ) -> None:
-        """Position ohne Fahrbefehl setzen, z. B. nach einem manuellen Eingriff."""
+        """Set the position without moving, e.g. after a manual adjustment."""
         self._cancel_auto_stop()
         self._cancel_delayed_start()
         self._async_stop_updater()
@@ -956,7 +960,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         tilt_time_up: float | None = None,
         tilt_time_down: float | None = None,
     ) -> None:
-        """Fahrzeiten zur Laufzeit setzen und dauerhaft speichern."""
+        """Set the travel times at runtime and store them permanently."""
         if travel_time_up is not None or travel_time_down is not None:
             self._calc.set_travel_times(
                 travel_time_down or self._calc.travel_time_down,
@@ -985,16 +989,16 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         self._async_refresh_state()
 
     async def async_calibrate(self, direction: str = "both") -> None:
-        """Kalibrierfahrt ausführen und die Fahrzeiten neu messen."""
+        """Run a calibration pass and measure the travel times afresh."""
         source_state = self.hass.states.get(self._source_entity_id)
         if (
             source_state is None
             or source_state.attributes.get(ATTR_CURRENT_POSITION) is None
         ):
             raise ServiceValidationError(
-                f"{self._source_entity_id} meldet keine Position. Eine "
-                "Kalibrierfahrt ist nicht möglich, bitte die Fahrzeiten mit "
-                f"{DOMAIN}.{SERVICE_SET_TRAVEL_TIMES} manuell setzen."
+                f"{self._source_entity_id} does not report a position, so a "
+                "calibration run is not possible. Set the travel times "
+                f"manually with {DOMAIN}.{SERVICE_SET_TRAVEL_TIMES}."
             )
 
         if direction == "up":
@@ -1014,7 +1018,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
             self._force_calibration = False
 
     async def _async_run_calibration_leg(self, target: float, timeout: float) -> None:
-        """Eine Vollfahrt ausführen und auf die Rückmeldung des Gateways warten."""
+        """Run one full pass and wait for the gateway to confirm it."""
         await self._async_move_to(target)
         await asyncio.sleep(CALIBRATION_START_GRACE)
 
@@ -1026,6 +1030,6 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
                 await self._idle_event.wait()
         except TimeoutError as err:
             raise HomeAssistantError(
-                f"Die Kalibrierfahrt von {self._source_entity_id} wurde nicht "
-                f"innerhalb von {timeout:.0f} s bestätigt."
+                f"The calibration run of {self._source_entity_id} was not "
+                f"confirmed within {timeout:.0f} s."
             ) from err

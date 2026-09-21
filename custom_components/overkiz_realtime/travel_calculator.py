@@ -1,8 +1,8 @@
-"""Zeitbasierte Positionsberechnung für Storen/Rollladen.
+"""Time based position calculation for covers and roller shutters.
 
-Der Rechner kennt keine Home-Assistant-Interna und ist damit
-eigenständig testbar. Positionen folgen der HA-Konvention:
-0 = geschlossen, 100 = offen.
+The calculator knows nothing about Home Assistant internals and is therefore
+testable on its own. Positions follow the HA convention:
+0 = closed, 100 = open.
 """
 
 from __future__ import annotations
@@ -14,17 +14,17 @@ import time
 POSITION_CLOSED = 0.0
 POSITION_OPEN = 100.0
 
-# Kürzeste sinnvolle Fahrzeit, verhindert Division durch Null
+# Shortest sensible travel time, guards against division by zero
 MIN_TRAVEL_TIME = 0.1
 
-# Grenzen, innerhalb derer eine Messung für die Kalibrierung zählt
+# Bounds within which a measurement counts towards the calibration
 CALIBRATION_MIN_SAMPLE_DISTANCE = 40.0
 CALIBRATION_MIN_TIME = 2.0
 CALIBRATION_MAX_TIME = 600.0
 
 
 class TravelStatus(Enum):
-    """Aktuelle Fahrtrichtung."""
+    """Current travel direction."""
 
     DIRECTION_UP = "up"
     DIRECTION_DOWN = "down"
@@ -32,17 +32,17 @@ class TravelStatus(Enum):
 
 
 def clamp_position(position: float) -> float:
-    """Position auf den gültigen Bereich begrenzen."""
+    """Clamp a position into the valid range."""
     return min(POSITION_OPEN, max(POSITION_CLOSED, position))
 
 
 @dataclass
 class TravelMeasurement:
-    """Sammelt die Positionsrückmeldungen des Gateways während einer Fahrt.
+    """Collects the gateway's position reports during a run.
 
-    Für die Kalibrierung zählen ausschliesslich Werte, die das Gateway selbst
-    gemeldet hat. Da alle Meldungen ungefähr gleich verzögert eintreffen,
-    kürzt sich diese Verzögerung bei der Differenzbildung heraus.
+    Only values the gateway reported itself count towards the calibration.
+    Because every report arrives with roughly the same delay, that delay
+    cancels out when the difference between two of them is taken.
     """
 
     direction: TravelStatus
@@ -50,13 +50,13 @@ class TravelMeasurement:
     interrupted: bool = False
 
     def add(self, timestamp: float, position: float) -> None:
-        """Rückmeldung aufnehmen, wenn sie eine neue Position zeigt."""
+        """Record a report if it shows a new position."""
         if self.samples and self.samples[-1][1] == position:
             return
         self.samples.append((timestamp, position))
 
     def full_travel_time(self) -> float | None:
-        """Auf eine Vollfahrt hochgerechnete Fahrzeit, falls messbar."""
+        """Travel time extrapolated to a full run, if measurable."""
         if self.interrupted or len(self.samples) < 2:
             return None
 
@@ -78,10 +78,10 @@ class TravelMeasurement:
 
 
 class TravelCalculator:
-    """Rechnet die aktuelle Position aus Richtung und verstrichener Zeit."""
+    """Derives the current position from direction and elapsed time."""
 
     def __init__(self, travel_time_down: float, travel_time_up: float) -> None:
-        """Rechner mit den Fahrzeiten für eine volle Fahrt initialisieren."""
+        """Initialise the calculator with the travel times of a full run."""
         self.travel_time_down = max(float(travel_time_down), MIN_TRAVEL_TIME)
         self.travel_time_up = max(float(travel_time_up), MIN_TRAVEL_TIME)
 
@@ -93,11 +93,11 @@ class TravelCalculator:
         self._target_position = POSITION_CLOSED
 
     def now(self) -> float:
-        """Monotone Zeitbasis; in Tests überschreibbar."""
+        """Monotonic time base; overridable in tests."""
         return time.monotonic()
 
     def set_travel_times(self, travel_time_down: float, travel_time_up: float) -> None:
-        """Fahrzeiten ändern, ohne eine laufende Fahrt zu verlieren."""
+        """Change the travel times without losing a run in progress."""
         current = self.current_position()
         self.travel_time_down = max(float(travel_time_down), MIN_TRAVEL_TIME)
         self.travel_time_up = max(float(travel_time_up), MIN_TRAVEL_TIME)
@@ -107,17 +107,17 @@ class TravelCalculator:
 
     @property
     def target_position(self) -> float:
-        """Zielposition der laufenden oder letzten Fahrt."""
+        """Target position of the current or most recent run."""
         return self._target_position
 
     def speed(self, direction: TravelStatus) -> float:
-        """Geschwindigkeit in Prozent pro Sekunde."""
+        """Speed in percent per second."""
         if direction is TravelStatus.DIRECTION_UP:
             return (POSITION_OPEN - POSITION_CLOSED) / self.travel_time_up
         return (POSITION_OPEN - POSITION_CLOSED) / self.travel_time_down
 
     def calculate_travel_time(self, from_position: float, to_position: float) -> float:
-        """Fahrzeit zwischen zwei Positionen in Sekunden."""
+        """Travel time between two positions, in seconds."""
         distance = to_position - from_position
         if distance == 0:
             return 0.0
@@ -127,7 +127,7 @@ class TravelCalculator:
         return abs(distance) / self.speed(direction)
 
     def position_at(self, timestamp: float) -> float:
-        """Position zu einem bestimmten Zeitpunkt."""
+        """Position at a given point in time."""
         if self.travel_direction is TravelStatus.STOPPED:
             return self._reference_position
 
@@ -141,11 +141,11 @@ class TravelCalculator:
         return max(self._reference_position - delta, self._target_position)
 
     def current_position(self) -> float:
-        """Aktuell berechnete Position."""
+        """Currently calculated position."""
         return self.position_at(self.now())
 
     def set_position(self, position: float) -> None:
-        """Bestätigte Position übernehmen und Fahrt beenden."""
+        """Adopt a confirmed position and end the run."""
         self._reference_position = clamp_position(float(position))
         self._target_position = self._reference_position
         self._reference_timestamp = self.now()
@@ -153,7 +153,7 @@ class TravelCalculator:
         self.position_known = True
 
     def update_position(self, position: float) -> None:
-        """Position während der Fahrt korrigieren, Richtung beibehalten."""
+        """Correct the position mid-run, keeping the direction."""
         if self.travel_direction is TravelStatus.STOPPED:
             self.set_position(position)
             return
@@ -162,7 +162,7 @@ class TravelCalculator:
         self._reference_timestamp = self.now()
         self.position_known = True
 
-        # Ziel bereits überfahren: Fahrt als beendet betrachten
+        # Already past the target: treat the run as finished
         if (
             self.travel_direction is TravelStatus.DIRECTION_UP
             and self._reference_position >= self._target_position
@@ -175,7 +175,7 @@ class TravelCalculator:
     def start_travel(
         self, target_position: float, start_time: float | None = None
     ) -> None:
-        """Fahrt zu einer Zielposition beginnen."""
+        """Begin a run towards a target position."""
         timestamp = self.now() if start_time is None else start_time
         self._reference_position = self.position_at(timestamp)
         self._reference_timestamp = timestamp
@@ -189,40 +189,40 @@ class TravelCalculator:
             self.travel_direction = TravelStatus.STOPPED
 
     def start_travel_up(self, start_time: float | None = None) -> None:
-        """Fahrt nach oben (öffnen) beginnen."""
+        """Begin an upward (opening) run."""
         self.start_travel(POSITION_OPEN, start_time)
 
     def start_travel_down(self, start_time: float | None = None) -> None:
-        """Fahrt nach unten (schliessen) beginnen."""
+        """Begin a downward (closing) run."""
         self.start_travel(POSITION_CLOSED, start_time)
 
     def stop(self) -> None:
-        """Fahrt an der aktuell berechneten Position anhalten."""
+        """Stop the run at the currently calculated position."""
         self._reference_position = self.current_position()
         self._target_position = self._reference_position
         self._reference_timestamp = self.now()
         self.travel_direction = TravelStatus.STOPPED
 
     def is_traveling(self) -> bool:
-        """True, solange die Store fährt."""
+        """True for as long as the cover is travelling."""
         return self.travel_direction is not TravelStatus.STOPPED
 
     def is_opening(self) -> bool:
-        """True, wenn nach oben gefahren wird."""
+        """True when travelling upwards."""
         return self.travel_direction is TravelStatus.DIRECTION_UP
 
     def is_closing(self) -> bool:
-        """True, wenn nach unten gefahren wird."""
+        """True when travelling downwards."""
         return self.travel_direction is TravelStatus.DIRECTION_DOWN
 
     def position_reached(self) -> bool:
-        """True, wenn die Zielposition erreicht ist."""
+        """True once the target position is reached."""
         if self.travel_direction is TravelStatus.STOPPED:
             return True
         return self.current_position() == self._target_position
 
     def travel_time_remaining(self) -> float:
-        """Verbleibende Fahrzeit in Sekunden."""
+        """Remaining travel time in seconds."""
         if self.travel_direction is TravelStatus.STOPPED:
             return 0.0
         return abs(self._target_position - self.current_position()) / self.speed(
@@ -230,9 +230,9 @@ class TravelCalculator:
         )
 
     def is_closed(self) -> bool:
-        """True, wenn vollständig geschlossen."""
+        """True when fully closed."""
         return self.current_position() <= POSITION_CLOSED
 
     def is_open(self) -> bool:
-        """True, wenn vollständig offen."""
+        """True when fully open."""
         return self.current_position() >= POSITION_OPEN

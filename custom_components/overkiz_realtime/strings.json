@@ -18,7 +18,11 @@
           "travel_time_down": "Travel time down (open to closed)",
           "tilt_enabled": "Calculate tilt position",
           "tilt_time_up": "Tilt time open",
-          "tilt_time_down": "Tilt time closed"
+          "tilt_time_down": "Tilt time closed",
+          "source_handling": "Original Overkiz entity"
+        },
+        "data_description": {
+          "source_handling": "The realtime entity forwards every command to the original entity, so the original is never disabled or deleted – that would break this integration too. It is only hidden, or additionally renamed."
         }
       }
     },
@@ -47,14 +51,16 @@
           "resync_threshold": "Correction threshold for gateway feedback",
           "timed_positioning": "Reach target position with a timed stop",
           "auto_calibration": "Keep travel times up to date automatically",
-          "calibration_weight": "Weight of a single measurement"
+          "calibration_weight": "Weight of a single measurement",
+          "source_handling": "Original Overkiz entity"
         },
         "data_description": {
           "update_interval": "Lower values look smoother but produce more state changes.",
           "command_delay": "Time the gateway and the radio link need before the motor actually starts.",
           "resync_threshold": "If the position reported by the gateway deviates more than this, the calculation snaps to it. 100 % disables correction while travelling.",
           "timed_positioning": "Only for devices without position support such as RTS motors: the run is stopped after the calculated time.",
-          "calibration_weight": "1.0 adopts every measurement immediately, small values smooth over many runs."
+          "calibration_weight": "1.0 adopts every measurement immediately, small values smooth over many runs.",
+          "source_handling": "The realtime entity forwards every command to the original entity, so the original is never disabled or deleted – that would break this integration too. It is only hidden, or additionally renamed."
         }
       }
     }
@@ -104,6 +110,15 @@
           "name": "Direction",
           "description": "Which travel time to measure."
         }
+      }
+    }
+  },
+  "selector": {
+    "source_handling": {
+      "options": {
+        "keep": "Leave it alone (both entities stay visible)",
+        "hide": "Hide it (recommended)",
+        "takeover": "Hide it and take over its entity ID"
       }
     }
   }

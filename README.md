@@ -1,138 +1,178 @@
 # Overkiz Realtime Position
 
-Echtzeit-Position für Somfy-/Overkiz-Storen in Home Assistant.
+<img src="custom_components/overkiz_realtime/brand/logo.png" alt="Overkiz Realtime Position" height="96">
 
-Die offizielle [Overkiz-Integration](https://www.home-assistant.io/integrations/overkiz/)
-meldet die Position einer Store nur sporadisch – typischerweise alle 15 bis 20
-Sekunden und verlässlich erst, wenn die Fahrt beendet ist. Während der Fahrt
-springt die Anzeige im Dashboard deshalb in groben Stufen oder gar nicht. Das
-ist keine Einstellungssache, sondern eine Eigenschaft der Somfy-Cloud- und
-lokalen API (siehe [home-assistant/core#76717](https://github.com/home-assistant/core/issues/76717)).
+Realtime position for Somfy/Overkiz covers in Home Assistant.
 
-Diese Custom-Integration legt neben die bestehende Overkiz-Entität eine zweite
-Cover-Entität, welche die Position zwischen den Rückmeldungen aus
-**Fahrtrichtung × verstrichener Zeit** berechnet und laufend aktualisiert.
-Sobald das Gateway eine echte Position meldet, rastet die Berechnung wieder auf
-diesen Wert ein – die Anzeige ist also flüssig und driftet trotzdem nicht weg.
+The official [Overkiz integration](https://www.home-assistant.io/integrations/overkiz/)
+reports a cover's position only sporadically — typically every 15 to 20 seconds,
+and reliably only once the run has finished. While the cover is moving the
+dashboard therefore jumps in coarse steps, or does not move at all. That is not
+a setting anyone forgot, it is a property of the Somfy cloud and local API (see
+[home-assistant/core#76717](https://github.com/home-assistant/core/issues/76717)).
 
-## Funktionsprinzip
+This custom integration puts a second cover entity next to the existing Overkiz
+one. That entity computes the position from **travel direction × elapsed time**
+and keeps it updated continuously. As soon as the gateway reports a real
+position, the calculation snaps back onto it — so the display is smooth and
+still does not drift away.
+
+> [!NOTE]
+> **Vibe-coded.** This integration was written end to end in conversation with
+> an LLM ([Claude Code](https://claude.com/claude-code)) rather than typed out
+> by hand. It is covered by an automated test suite that runs against a real
+> Home Assistant instance, and the code has been read through — but it has
+> **not yet been proven on real hardware**. Travel times and `command_delay`
+> want verifying in day-to-day use. Treat it accordingly: it drives motors in
+> your house. Bug reports and pull requests are welcome.
+
+## How it works
 
 ```
-Kommando  ──►  Overkiz-Entität  ──►  Somfy-Gateway  ──►  Motor
-   │                  │
-   │                  └─ Rückmeldung alle ~20 s, sicher am Fahrtende
+Command  ──►  Overkiz entity  ──►  Somfy gateway  ──►  motor
+   │                 │
+   │                 └─ feedback every ~20 s, reliably at the end of the run
    │
-   └──►  Rechner: Position = Startposition ± (Zeit × 100 / Fahrzeit)
-                  Aktualisierung alle 0.5 s (einstellbar)
+   └──►  calculator: position = start position ± (time × 100 / travel time)
+                     updated every 0.5 s (configurable)
 ```
 
-* **Steuern** – Alle Kommandos werden unverändert an die Overkiz-Entität
-  weitergereicht. Die Integration schaltet nichts selbst, sie rechnet nur mit.
-* **Einrasten** – Meldet das Gateway das Fahrtende mit einer Position, wird der
-  Rechner exakt darauf gesetzt (`position_estimated` wird `false`).
-* **Korrigieren** – Kommt während der Fahrt eine Rückmeldung, die stärker als
-  die eingestellte Schwelle abweicht, übernimmt der Rechner sie sofort.
-* **Mitlesen** – Fahrten, die über eine Funkfernbedienung, die Somfy-App oder
-  direkt auf der Overkiz-Entität ausgelöst werden, werden erkannt und
-  mitgerechnet.
-* **Lernen** – Aus den Rückmeldungen des Gateways wird die tatsächliche
-  Fahrzeit laufend nachgeführt (siehe unten).
+* **Control** — every command is passed through to the Overkiz entity
+  unchanged. The integration switches nothing itself, it only calculates
+  alongside.
+* **Snap** — when the gateway reports the end of a run together with a
+  position, the calculator is set exactly onto it (`position_estimated`
+  becomes `false`).
+* **Correct** — if feedback arrives mid-run that deviates by more than the
+  configured threshold, the calculator adopts it immediately.
+* **Follow along** — runs triggered by a radio remote, the Somfy app or
+  directly on the Overkiz entity are detected and calculated along with.
+* **Learn** — the actual travel time is continuously derived from the
+  gateway's feedback (see below).
 
 ## Installation
 
 ### HACS
 
-1. HACS → Integrationen → ⋮ → **Benutzerdefinierte Repositories**
-2. `https://github.com/neuhausf/overkiz_realtime` eintragen, Kategorie **Integration**
-3. „Overkiz Realtime Position“ installieren
-4. Home Assistant neu starten
+1. HACS → Integrations → ⋮ → **Custom repositories**
+2. Enter `https://github.com/neuhausf/overkiz_realtime`, category **Integration**
+3. Install "Overkiz Realtime Position"
+4. Restart Home Assistant
 
-### Manuell
+### Manually
 
-Den Ordner `custom_components/overkiz_realtime` nach
-`<config>/custom_components/overkiz_realtime` kopieren und Home Assistant neu
-starten.
+Copy the folder `custom_components/overkiz_realtime` to
+`<config>/custom_components/overkiz_realtime` and restart Home Assistant.
 
-## Einrichtung
+## Setup
 
-**Einstellungen → Geräte & Dienste → Integration hinzufügen → Overkiz Realtime
-Position**
+**Settings → Devices & services → Add integration → Overkiz Realtime Position**
 
-1. **Quell-Entität** – die bestehende `cover.*`-Entität aus der
-   Overkiz-Integration.
-2. **Name** – Name der neuen Entität, vorbelegt mit „<Store> Echtzeit“.
-3. **Fahrzeiten** – Dauer einer kompletten Fahrt von ganz geschlossen bis ganz
-   offen und umgekehrt. Einmal mit der Stoppuhr messen genügt; auf ±2 s kommt
-   es nicht an, den Rest übernimmt die Kalibrierung.
-4. **Lamellen** – bei Raffstoren aktivieren und die Kippzeit angeben (meist 1–2 s).
+1. **Source entity** — the existing `cover.*` entity from the Overkiz
+   integration.
+2. **Name** — name of the new entity, prefilled with "\<cover\> Realtime".
+3. **Travel times** — how long a complete run from fully closed to fully open
+   takes, and back. Measuring once with a stopwatch is enough; ±2 s does not
+   matter, calibration takes care of the rest.
+4. **Slats** — enable for venetian blinds and give the tilt time (usually
+   1–2 s).
+5. **Original Overkiz entity** — what should happen to it, see the next
+   section.
 
-Die neue Entität wird beim gleichen Somfy-Gerät einsortiert wie das Original.
-Für den Alltag empfiehlt es sich, im Dashboard nur noch die Echtzeit-Entität zu
-verwenden und die originale Overkiz-Entität auszublenden.
+The new entity is filed under the same Somfy device as the original.
 
-## Optionen
+## One cover, one entity
 
-Über **Konfigurieren** beim Integrationseintrag:
+Two cover entities for the same physical shutter are one too many. The
+**Original Overkiz entity** option decides what happens to the original:
 
-| Option | Standard | Bedeutung |
+| Mode | What it does |
+| --- | --- |
+| Leave it alone | Both entities stay visible. |
+| **Hide** (default for new entries) | The original is marked hidden. It keeps its state, its history, its entity ID and every automation that uses it — it just disappears from dashboards and auto-generated views. |
+| Take over its entity ID | As above, and the two entity IDs are swapped: the realtime entity ends up as `cover.office`, the original moves to `cover.office_overkiz`. Existing dashboards, scripts and automations keep working and now point at the realtime entity. |
+
+### Why the original is never disabled or deleted
+
+This came up as the obvious idea, and it is the one thing that does not work.
+The realtime entity has no connection of its own to the Somfy gateway: it
+**reads the original entity's state and forwards every command to it**. A
+disabled entity is removed from the state machine and accepts no service calls
+— disabling the original would take the realtime entity down with it.
+
+Deleting is worse. The Overkiz integration recreates its entities from their
+unique IDs on the next reload, so the deletion would not stick, and the
+recorder history would be orphaned in the meantime.
+
+That leaves hiding and renaming. Both only touch the entity registry, both
+leave the Overkiz integration itself completely untouched, and both are undone
+again when the config entry is removed — the original gets its entity ID and
+its visibility back. If you hid the original yourself beforehand, that is left
+alone as well.
+
+## Options
+
+Via **Configure** on the integration entry:
+
+| Option | Default | Meaning |
 | --- | --- | --- |
-| Fahrzeit hoch / runter | 25 s | Dauer einer Vollfahrt je Richtung |
-| Lamellenposition berechnen | aus | Tilt mitrechnen (Raffstore) |
-| Lamellenzeit auf / zu | 1.5 s | Dauer einer kompletten Lamellendrehung |
-| Lamellen bei Fahrtbeginn mitdrehen | ein | Abfahrt schliesst die Lamellen, Auffahrt öffnet sie |
-| Aktualisierungsintervall | 0.5 s | Takt der Neuberechnung während der Fahrt |
-| Kommandoverzögerung | 0 s | Totzeit zwischen Kommando und Anlaufen des Motors |
-| Korrekturschwelle | 15 % | Ab dieser Abweichung wird die Gateway-Meldung sofort übernommen; 100 % schaltet die Korrektur während der Fahrt ab |
-| Zielposition über Stoppuhr | ein | Für Geräte ohne Positionsunterstützung (RTS): Fahrt wird nach berechneter Zeit gestoppt |
-| Fahrzeiten automatisch nachführen | ein | Automatische Kalibrierung |
-| Gewicht einer Messung | 0.2 | 1.0 übernimmt jede Messung sofort, kleine Werte glätten über viele Fahrten |
+| Original Overkiz entity | Hide | See above |
+| Travel time up / down | 25 s | Duration of a full run per direction |
+| Calculate tilt position | off | Calculate tilt as well (venetian blind) |
+| Tilt time open / closed | 1.5 s | Duration of a complete tilt |
+| Move slats when travel starts | on | Closing tilts the slats shut, opening tilts them open |
+| Update interval | 0.5 s | How often the position is recalculated while travelling |
+| Command delay | 0 s | Dead time between command and the motor starting |
+| Correction threshold | 15 % | Above this deviation, gateway feedback is adopted immediately; 100 % disables correction while travelling |
+| Timed positioning | on | For devices without position support (RTS): the run is stopped after the calculated time |
+| Keep travel times up to date | on | Automatic calibration |
+| Weight of a single measurement | 0.2 | 1.0 adopts every measurement immediately, small values smooth over many runs |
 
-### Zur Korrekturschwelle
+### About the correction threshold
 
-Die Rückmeldungen des Gateways sind gegenüber der Realität um ein bis zwei
-Sekunden verzögert. Eine zu kleine Schwelle lässt die Anzeige deshalb während
-der Fahrt zurückspringen. 15 % fängt grobe Fehler ab, ohne dass es sichtbar
-ruckelt.
+The gateway's reports lag reality by one to two seconds. Too small a threshold
+therefore makes the display jump backwards mid-run. 15 % catches gross errors
+without visible stuttering.
 
-## Automatische Kalibrierung
+## Automatic calibration
 
-Die Integration misst die Fahrzeit **nicht** von „Kommando gesendet“ bis
-„Gateway meldet fertig“ – diese Spanne enthält die Latenz von Cloud, Gateway und
-Funkstrecke und wäre systematisch zu lang. Stattdessen werden ausschliesslich
-die Positionsmeldungen des Gateways gegeneinander gerechnet:
+The integration does **not** measure the travel time from "command sent" to
+"gateway reports finished" — that span includes the latency of cloud, gateway
+and radio link and would be systematically too long. Instead only the gateway's
+position reports are weighed against each other:
 
 ```
-gemeldet:  10 % bei t = 2.5 s
-gemeldet:  90 % bei t = 22.5 s
+reported:  10 % at t = 2.5 s
+reported:  90 % at t = 22.5 s
            ────────────────────
-           80 % in 20 s  →  25 s für 100 %
+           80 % in 20 s  →  25 s for 100 %
 ```
 
-Da beide Meldungen gleich stark verzögert sind, kürzt sich die Latenz heraus.
-Eine Messung zählt nur, wenn mindestens 40 % Weg zwischen der ersten und der
-letzten Rückmeldung liegen, die Fahrt nicht unterbrochen wurde und das Ergebnis
-höchstens 50 % vom bisherigen Wert abweicht. Der neue Wert fliesst gewichtet
-ein und wird dauerhaft gespeichert – ein Neustart oder Reload verliert ihn nicht.
+Because both reports are delayed by the same amount, the latency cancels out. A
+measurement only counts if at least 40 % of travel lies between the first and
+the last report, the run was not interrupted, and the result deviates by no
+more than 50 % from the current value. The new value is folded in weighted and
+stored permanently — a restart or reload does not lose it.
 
-Die aktuell verwendeten Werte stehen in den Attributen der Entität
+The values currently in use are exposed as entity attributes
 (`travel_time_up`, `travel_time_down`, `last_calibration`,
 `calibration_samples`).
 
-Wer es exakt will, ruft einmalig den Dienst `overkiz_realtime.calibrate` auf:
-Die Store fährt ganz zu, ganz auf und wieder zu, und die gemessenen Zeiten
-werden direkt übernommen.
+If you want it exact, call the `overkiz_realtime.calibrate` service once: the
+cover runs fully closed, fully open and closed again, and the measured times
+are adopted directly.
 
-## Dienste
+## Services
 
 ### `overkiz_realtime.set_known_position`
 
-Setzt die berechnete Position, ohne einen Fahrbefehl zu senden – etwa nachdem
-die Store von Hand oder per Fernbedienung verstellt wurde.
+Sets the calculated position without sending a movement command — for instance
+after the cover has been moved by hand or with a remote.
 
 ```yaml
 action: overkiz_realtime.set_known_position
 target:
-  entity_id: cover.wohnzimmer_echtzeit
+  entity_id: cover.living_room_realtime
 data:
   position: 45
   tilt_position: 30
@@ -140,12 +180,12 @@ data:
 
 ### `overkiz_realtime.set_travel_times`
 
-Überschreibt die Fahrzeiten zur Laufzeit und speichert sie dauerhaft.
+Overrides the travel times at runtime and stores them permanently.
 
 ```yaml
 action: overkiz_realtime.set_travel_times
 target:
-  entity_id: cover.wohnzimmer_echtzeit
+  entity_id: cover.living_room_realtime
 data:
   travel_time_up: 23.5
   travel_time_down: 26.0
@@ -153,72 +193,76 @@ data:
 
 ### `overkiz_realtime.calibrate`
 
-Kalibrierfahrt über den kompletten Weg. Setzt voraus, dass die Quell-Entität
-eine Position meldet.
+Calibration run across the full travel. Requires the source entity to report a
+position.
 
 ```yaml
 action: overkiz_realtime.calibrate
 target:
-  entity_id: cover.wohnzimmer_echtzeit
+  entity_id: cover.living_room_realtime
 data:
   direction: both   # both | up | down
 ```
 
-## Attribute
+## Attributes
 
-| Attribut | Bedeutung |
+| Attribute | Meaning |
 | --- | --- |
-| `source_entity_id` | Zugrundeliegende Overkiz-Entität |
-| `position_estimated` | `true`, solange die Position gerechnet und nicht vom Gateway bestätigt ist |
-| `target_position` | Zielposition der laufenden Fahrt |
-| `travel_time_remaining` | Verbleibende Fahrzeit in Sekunden |
-| `travel_time_up` / `travel_time_down` | Aktuell verwendete Fahrzeiten |
-| `tilt_time_up` / `tilt_time_down` | Aktuell verwendete Lamellenzeiten |
-| `last_calibration` | Zeitpunkt der letzten übernommenen Messung |
-| `calibration_samples` | Anzahl übernommener Messungen |
+| `source_entity_id` | The underlying Overkiz entity |
+| `position_estimated` | `true` for as long as the position is calculated and not confirmed by the gateway |
+| `target_position` | Target position of the current run |
+| `travel_time_remaining` | Remaining travel time in seconds |
+| `travel_time_up` / `travel_time_down` | Travel times currently in use |
+| `tilt_time_up` / `tilt_time_down` | Tilt times currently in use |
+| `last_calibration` | Time of the last adopted measurement |
+| `calibration_samples` | Number of adopted measurements |
 
-## RTS-Motoren ohne Positionsrückmeldung
+## RTS motors without position feedback
 
-Reine RTS-Geräte melden überhaupt keine Position. Die Integration wird dann zur
-einzigen Positionsquelle:
+Pure RTS devices report no position at all. The integration then becomes the
+only source of position:
 
-* Zielpositionen werden zeitgesteuert angefahren – die Integration sendet
-  `open`/`close` und nach der berechneten Zeit ein `stop`.
-* Eine automatische Kalibrierung ist nicht möglich, da es keine Rückmeldungen
-  gibt. Die Fahrzeiten müssen gemessen und eingetragen werden.
-* Nach Fahrten per Funkfernbedienung weiss die Integration nichts. In dem Fall
-  einmal ganz auf oder ganz zu fahren, oder `set_known_position` verwenden.
+* Target positions are reached on a timer — the integration sends
+  `open`/`close` and a `stop` after the calculated time.
+* Automatic calibration is impossible, as there is no feedback. The travel
+  times have to be measured and entered.
+* The integration knows nothing about runs made with a radio remote. In that
+  case run fully open or fully closed once, or use `set_known_position`.
 
-## Grenzen
+## Limits
 
-* Wird die originale Overkiz-Entität von aussen auf eine **Zwischenposition**
-  gefahren, ohne dass Home Assistant das Kommando sieht (Somfy-App,
-  Funkfernbedienung), nimmt die Integration zunächst eine Vollfahrt an und
-  korrigiert erst mit der nächsten Rückmeldung. Kommandos, die über Home
-  Assistant laufen, werden dagegen erkannt – auch wenn sie direkt an die
-  Overkiz-Entität gehen.
-* Die Berechnung setzt eine konstante Geschwindigkeit voraus. Anlauf- und
-  Bremsrampen sind bei Storen im Bereich weniger Zehntelsekunden und damit
-  vernachlässigbar.
-* Windautomatik oder Hindernisabschaltung des Motors sieht die Integration erst,
-  wenn das Gateway die neue Position meldet.
+* If the original Overkiz entity is moved to an **intermediate position** from
+  outside without Home Assistant seeing the command (Somfy app, radio remote),
+  the integration initially assumes a full run and only corrects with the next
+  report. Commands that go through Home Assistant are detected — including
+  those sent straight to the Overkiz entity.
+* The calculation assumes a constant speed. Acceleration and braking ramps are
+  in the range of a few tenths of a second for covers and therefore negligible.
+* The motor's wind automation or obstacle detection only becomes visible to the
+  integration once the gateway reports the new position.
 
-## Entwicklung
+## Development
 
 ```bash
 python -m venv .venv && .venv/bin/pip install pytest-homeassistant-custom-component
 .venv/bin/python -m pytest
 ```
 
-Die Tests laufen gegen eine echte Home-Assistant-Instanz und decken Config-Flow,
-Interpolation, Stopp, Resync, externe Fahrten, Lamellen, Kalibrierung und die
-Dienste ab.
+The tests run against a real Home Assistant instance and cover the config flow,
+interpolation, stop, resync, external runs, slats, calibration, the services
+and the handling of the source entity.
 
-## Vor dem Veröffentlichen anpassen
+The brand assets are generated, not hand-drawn:
 
-In `custom_components/overkiz_realtime/manifest.json` gehören `codeowners`,
-`documentation` und `issue_tracker` auf den eigenen GitHub-Account.
+```bash
+python scripts/generate_brand_assets.py
+```
 
-## Lizenz
+The artwork is an original mark, deliberately not a copy of the Overkiz or
+Somfy logo — those are third-party trademarks. Swap the files in
+`custom_components/overkiz_realtime/brand/` if you would rather have something
+else.
+
+## License
 
 MIT

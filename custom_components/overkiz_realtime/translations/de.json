@@ -18,7 +18,11 @@
           "travel_time_down": "Fahrzeit runter (ganz auf bis ganz zu)",
           "tilt_enabled": "Lamellenposition berechnen",
           "tilt_time_up": "Lamellenzeit auf",
-          "tilt_time_down": "Lamellenzeit zu"
+          "tilt_time_down": "Lamellenzeit zu",
+          "source_handling": "Originale Overkiz-Entität"
+        },
+        "data_description": {
+          "source_handling": "Die Echtzeit-Entität reicht jedes Kommando an die originale Entität weiter. Deshalb wird die Originale nie deaktiviert oder gelöscht – das würde diese Integration mit abschießen. Sie wird nur ausgeblendet oder zusätzlich umbenannt."
         }
       }
     },
@@ -47,14 +51,16 @@
           "resync_threshold": "Korrekturschwelle für Gateway-Rückmeldungen",
           "timed_positioning": "Zielposition notfalls über Stoppuhr anfahren",
           "auto_calibration": "Fahrzeiten automatisch nachführen",
-          "calibration_weight": "Gewicht einer einzelnen Messung"
+          "calibration_weight": "Gewicht einer einzelnen Messung",
+          "source_handling": "Originale Overkiz-Entität"
         },
         "data_description": {
           "update_interval": "Kleinere Werte ergeben eine flüssigere Anzeige, erzeugen aber mehr Statusänderungen.",
           "command_delay": "Zeit, die das Gateway und der Funkweg brauchen, bis der Motor tatsächlich anläuft.",
           "resync_threshold": "Weicht die vom Gateway gemeldete Position stärker als dieser Wert ab, wird die Berechnung sofort darauf gesetzt. 100 % schaltet die Korrektur während der Fahrt ab.",
           "timed_positioning": "Nur für Geräte ohne Positionsunterstützung, etwa RTS-Motoren: Die Fahrt wird nach der berechneten Zeit gestoppt.",
-          "calibration_weight": "1.0 übernimmt jede Messung sofort, kleine Werte glätten über viele Fahrten."
+          "calibration_weight": "1.0 übernimmt jede Messung sofort, kleine Werte glätten über viele Fahrten.",
+          "source_handling": "Die Echtzeit-Entität reicht jedes Kommando an die originale Entität weiter. Deshalb wird die Originale nie deaktiviert oder gelöscht – das würde diese Integration mit abschießen. Sie wird nur ausgeblendet oder zusätzlich umbenannt."
         }
       }
     }
@@ -104,6 +110,15 @@
           "name": "Richtung",
           "description": "Welche Fahrzeit gemessen werden soll."
         }
+      }
+    }
+  },
+  "selector": {
+    "source_handling": {
+      "options": {
+        "keep": "Unverändert lassen (beide Entitäten bleiben sichtbar)",
+        "hide": "Ausblenden (empfohlen)",
+        "takeover": "Ausblenden und ihre Entitäts-ID übernehmen"
       }
     }
   }

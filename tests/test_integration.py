@@ -1,4 +1,4 @@
-"""Integrationstests gegen eine echte Home-Assistant-Instanz."""
+"""Integration tests against a real Home Assistant instance."""
 
 from __future__ import annotations
 
@@ -45,15 +45,15 @@ POSITIONABLE = (
 
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
-    """Custom-Integrationen in diesen Tests laden."""
+    """Load custom integrations in these tests."""
     yield
 
 
 class SourceCalls:
-    """Zeichnet Dienstaufrufe auf, die an die Quell-Entität gehen."""
+    """Records the service calls that go to the source entity."""
 
     def __init__(self, hass: HomeAssistant) -> None:
-        """Auf Dienstaufrufe hören."""
+        """Listen for service calls."""
         self.events: list[tuple[str, dict[str, Any]]] = []
 
         @callback
@@ -69,13 +69,13 @@ class SourceCalls:
         hass.bus.async_listen(EVENT_CALL_SERVICE, _record)
 
     def of(self, service: str) -> list[dict[str, Any]]:
-        """Aufrufe eines bestimmten Dienstes."""
+        """The calls of one particular service."""
         return [data for name, data in self.events if name == service]
 
 
 @pytest.fixture
 def source_calls(hass: HomeAssistant) -> SourceCalls:
-    """Aufzeichnung der an die Quelle weitergereichten Kommandos."""
+    """Recording of the commands forwarded to the source."""
     return SourceCalls(hass)
 
 
@@ -86,7 +86,7 @@ def _set_source(
     features: int = POSITIONABLE,
     **attributes: Any,
 ) -> None:
-    """Zustand der Quell-Entität setzen."""
+    """Set the state of the source entity."""
     data: dict[str, Any] = {
         "supported_features": int(features),
         "device_class": "shutter",
@@ -99,7 +99,7 @@ def _set_source(
 
 
 def _options(**overrides: Any) -> dict[str, Any]:
-    """Standardoptionen für die Tests."""
+    """Default options for the tests."""
     options: dict[str, Any] = {
         CONF_TRAVEL_TIME_UP: 20.0,
         CONF_TRAVEL_TIME_DOWN: 25.0,
@@ -119,7 +119,7 @@ def _options(**overrides: Any) -> dict[str, Any]:
 
 
 async def _setup(hass: HomeAssistant, **option_overrides: Any) -> MockConfigEntry:
-    """Konfigurationseintrag anlegen und einrichten."""
+    """Create a config entry and set it up."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Storen Echtzeit",
@@ -136,7 +136,7 @@ async def _setup(hass: HomeAssistant, **option_overrides: Any) -> MockConfigEntr
 async def _advance(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, seconds: float
 ) -> None:
-    """Zeit vorspulen und die Timer der Integration auslösen."""
+    """Fast forward time and fire the integration's timers."""
     steps = max(int(seconds / 0.5), 1)
     for _ in range(steps):
         freezer.tick(seconds / steps)
@@ -145,7 +145,7 @@ async def _advance(
 
 
 async def test_config_flow_creates_entry(hass: HomeAssistant) -> None:
-    """Der Einrichtungsassistent legt einen Eintrag an."""
+    """The setup wizard creates an entry."""
     _set_source(hass, "closed", 0)
 
     result = await hass.config_entries.flow.async_init(
@@ -182,7 +182,7 @@ async def test_config_flow_creates_entry(hass: HomeAssistant) -> None:
 
 
 async def test_config_flow_rejects_unknown_entity(hass: HomeAssistant) -> None:
-    """Eine Entität ohne Zustand wird abgelehnt."""
+    """An entity without a state is rejected."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "user"}
     )
@@ -195,7 +195,7 @@ async def test_config_flow_rejects_unknown_entity(hass: HomeAssistant) -> None:
 
 
 async def test_initial_position_from_source(hass: HomeAssistant) -> None:
-    """Beim Start wird die gemeldete Position übernommen."""
+    """The reported position is adopted at startup."""
     _set_source(hass, "open", 40)
     await _setup(hass)
 
@@ -210,7 +210,7 @@ async def test_initial_position_from_source(hass: HomeAssistant) -> None:
 async def test_open_cover_interpolates(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, source_calls: SourceCalls
 ) -> None:
-    """Während der Auffahrt wird die Position hochgerechnet."""
+    """The position is extrapolated while opening."""
     _set_source(hass, "closed", 0)
     await _setup(hass)
 
@@ -238,7 +238,7 @@ async def test_open_cover_interpolates(
 async def test_close_uses_own_travel_time(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, source_calls: SourceCalls
 ) -> None:
-    """Die Abfahrt nutzt die separat konfigurierte Fahrzeit."""
+    """The closing run uses its own configured travel time."""
     _set_source(hass, "open", 100)
     await _setup(hass)
 
@@ -257,7 +257,7 @@ async def test_close_uses_own_travel_time(
 async def test_set_position_forwards_to_source(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, source_calls: SourceCalls
 ) -> None:
-    """Zielpositionen werden an die Quelle durchgereicht."""
+    """Target positions are passed through to the source."""
     _set_source(hass, "closed", 0)
     await _setup(hass)
 
@@ -282,7 +282,7 @@ async def test_set_position_forwards_to_source(
 async def test_stop_freezes_position(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, source_calls: SourceCalls
 ) -> None:
-    """Ein Stopp friert die berechnete Position ein."""
+    """A stop freezes the calculated position."""
     _set_source(hass, "closed", 0)
     await _setup(hass)
 
@@ -306,7 +306,7 @@ async def test_stop_freezes_position(
 async def test_timed_positioning_for_rts(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, source_calls: SourceCalls
 ) -> None:
-    """Ohne Positionsunterstützung wird die Fahrt zeitgesteuert gestoppt."""
+    """Without position support the run is stopped on a timer."""
     features = (
         CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP
     )
@@ -337,14 +337,14 @@ async def test_timed_positioning_for_rts(
     assert len(source_calls.of("stop_cover")) == 1
     state = hass.states.get(TARGET)
     assert state.state == "open"
-    # Die Testuhr löst Timer bis zu 0.5 s zu früh aus
+    # The test clock fires timers up to 0.5 s early
     assert state.attributes["current_position"] == pytest.approx(60, abs=2)
 
 
 async def test_external_movement_is_tracked(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Eine von aussen ausgelöste Fahrt wird erkannt und mitgerechnet."""
+    """A run triggered from outside is detected and calculated along with."""
     _set_source(hass, "open", 100)
     await _setup(hass)
 
@@ -367,7 +367,7 @@ async def test_external_movement_is_tracked(
 async def test_external_service_call_is_tracked(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Ein Kommando direkt an die Overkiz-Entität startet die Berechnung."""
+    """A command sent straight to the Overkiz entity starts the calculation."""
     _set_source(hass, "closed", 0)
     await _setup(hass)
 
@@ -388,7 +388,7 @@ async def test_external_service_call_is_tracked(
 async def test_late_gateway_report_does_not_restart_travel(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, source_calls: SourceCalls
 ) -> None:
-    """Meldet das Gateway die Fahrt verspätet, startet keine neue Vollfahrt."""
+    """A late report from the gateway must not start a new full run."""
     _set_source(hass, "open", 100)
     await _setup(hass)
 
@@ -423,7 +423,7 @@ async def test_late_gateway_report_does_not_restart_travel(
 async def test_resync_on_large_deviation(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Grosse Abweichungen der Gateway-Meldung werden übernommen."""
+    """Large deviations in the gateway feedback are adopted."""
     _set_source(hass, "closed", 0)
     await _setup(hass)
 
@@ -445,7 +445,7 @@ async def test_resync_on_large_deviation(
 async def test_auto_calibration_learns_travel_time(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Aus den Gateway-Meldungen wird die Fahrzeit nachgeführt."""
+    """The travel time is kept up to date from the gateway feedback."""
     _set_source(hass, "closed", 0)
     await _setup(hass, **{CONF_RESYNC_THRESHOLD: 100.0})
 
@@ -453,7 +453,7 @@ async def test_auto_calibration_learns_travel_time(
     await hass.async_block_till_done()
 
     # Gateway meldet 10 % nach 2.5 s und 90 % nach 22.5 s
-    # -> 80 % in 20 s -> 25 s für eine Vollfahrt
+    # -> 80 % in 20 s -> 25 s for a full run
     await _advance(hass, freezer, 2.5)
     _set_source(hass, STATE_OPENING, 10)
     await hass.async_block_till_done()
@@ -475,7 +475,7 @@ async def test_auto_calibration_learns_travel_time(
 async def test_auto_calibration_rejects_outlier(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Unplausible Messungen verändern die Fahrzeit nicht."""
+    """Implausible measurements leave the travel time alone."""
     _set_source(hass, "closed", 0)
     await _setup(hass, **{CONF_RESYNC_THRESHOLD: 100.0})
 
@@ -486,7 +486,7 @@ async def test_auto_calibration_rejects_outlier(
     _set_source(hass, STATE_OPENING, 10)
     await hass.async_block_till_done()
 
-    # 80 % in 80 s entspräche 100 s Vollfahrt statt der erwarteten 20 s
+    # 80 % in 80 s would mean a 100 s full run instead of the expected 20 s
     await _advance(hass, freezer, 80)
     _set_source(hass, "open", 90)
     await hass.async_block_till_done()
@@ -497,7 +497,7 @@ async def test_auto_calibration_rejects_outlier(
 async def test_tilt_follows_position(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Bei einer Abfahrt schliessen sich die Lamellen."""
+    """The slats close when a closing run starts."""
     features = POSITIONABLE | CoverEntityFeature.SET_TILT_POSITION
     _set_source(hass, "open", 100, features=features, current_tilt_position=100)
     await _setup(hass, **{CONF_TILT_ENABLED: True})
@@ -515,7 +515,7 @@ async def test_tilt_follows_position(
 async def test_tilt_position_forwarded(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, source_calls: SourceCalls
 ) -> None:
-    """Lamellenbefehle gehen an die Quelle und werden interpoliert."""
+    """Tilt commands go to the source and are interpolated."""
     features = POSITIONABLE | CoverEntityFeature.SET_TILT_POSITION
     _set_source(hass, "open", 100, features=features, current_tilt_position=0)
     await _setup(hass, **{CONF_TILT_ENABLED: True})
@@ -539,7 +539,7 @@ async def test_tilt_position_forwarded(
 async def test_set_known_position_service(
     hass: HomeAssistant, source_calls: SourceCalls
 ) -> None:
-    """Der Dienst setzt die Position ohne Fahrbefehl."""
+    """The service sets the position without a movement command."""
     _set_source(hass, "open", 100)
     await _setup(hass)
 
@@ -556,7 +556,7 @@ async def test_set_known_position_service(
 
 
 async def test_set_travel_times_service(hass: HomeAssistant) -> None:
-    """Fahrzeiten lassen sich zur Laufzeit ändern."""
+    """Travel times can be changed at runtime."""
     _set_source(hass, "open", 100)
     await _setup(hass)
 
@@ -574,7 +574,7 @@ async def test_set_travel_times_service(hass: HomeAssistant) -> None:
 
 
 async def test_learned_times_survive_reload(hass: HomeAssistant) -> None:
-    """Gelernte Fahrzeiten überleben einen Neustart des Eintrags."""
+    """Learned travel times survive a reload of the entry."""
     _set_source(hass, "open", 100)
     entry = await _setup(hass)
 
@@ -593,7 +593,7 @@ async def test_learned_times_survive_reload(hass: HomeAssistant) -> None:
 
 
 async def test_unavailable_source(hass: HomeAssistant) -> None:
-    """Fällt die Quelle aus, wird auch die Echtzeit-Entität unavailable."""
+    """If the source drops out, the realtime entity goes unavailable too."""
     _set_source(hass, "open", 100)
     await _setup(hass)
 
@@ -604,7 +604,7 @@ async def test_unavailable_source(hass: HomeAssistant) -> None:
 
 
 async def test_unload_entry(hass: HomeAssistant) -> None:
-    """Der Eintrag lässt sich sauber entladen."""
+    """The entry unloads cleanly."""
     _set_source(hass, "open", 100)
     entry = await _setup(hass)
 
