@@ -21,10 +21,11 @@ still does not drift away.
 > **Vibe-coded.** This integration was written end to end in conversation with
 > an LLM ([Claude Code](https://claude.com/claude-code)) rather than typed out
 > by hand. It is covered by an automated test suite that runs against a real
-> Home Assistant instance, and the code has been read through — but it has
-> **not yet been proven on real hardware**. Travel times and `command_delay`
-> want verifying in day-to-day use. Treat it accordingly: it drives motors in
-> your house. Bug reports and pull requests are welcome.
+> Home Assistant instance, and it has been **tried out on real hardware** —
+> Somfy/Overkiz covers with venetian blind slats — which is where the tilt
+> edge case below was found and fixed. Travel times and `command_delay` still
+> want checking against your own covers. Bug reports and pull requests are
+> welcome.
 
 ## How it works
 
@@ -229,6 +230,23 @@ only source of position:
 * The integration knows nothing about runs made with a radio remote. In that
   case run fully open or fully closed once, or use `set_known_position`.
 
+## Tilting the slats
+
+Turning the slats runs the motor for a moment, and the gateway reports that
+movement exactly like an ordinary opening or closing run — most visibly when
+the slats are driven fully open or fully closed, which is a longer turn than a
+few degrees in between.
+
+The integration therefore does not take a movement report for a position run
+while a tilt command is in flight: the calculated position stays where it is
+and the slats are interpolated instead. The window closes as soon as the
+gateway reports the run as finished, and a position command issued in the
+meantime supersedes it. Tilts sent straight to the original Overkiz entity are
+recognised the same way.
+
+Without this, a full tilt sent the calculated position off to 0 % or 100 %
+while the cover had not actually gone anywhere.
+
 ## Limits
 
 * If the original Overkiz entity is moved to an **intermediate position** from
@@ -249,8 +267,8 @@ python -m venv .venv && .venv/bin/pip install pytest-homeassistant-custom-compon
 ```
 
 The tests run against a real Home Assistant instance and cover the config flow,
-interpolation, stop, resync, external runs, slats, calibration, the services
-and the handling of the source entity.
+interpolation, stop, resync, external runs, slats and their edge cases,
+calibration, the services and the handling of the source entity.
 
 The brand assets are generated, not hand-drawn:
 
