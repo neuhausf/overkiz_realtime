@@ -22,8 +22,8 @@ still does not drift away.
 > an LLM ([Claude Code](https://claude.com/claude-code)) rather than typed out
 > by hand. It is covered by an automated test suite that runs against a real
 > Home Assistant instance, and it has been **tried out on real hardware** —
-> Somfy/Overkiz covers with venetian blind slats — which is where the tilt
-> edge case below was found and fixed. Travel times and `command_delay` still
+> Somfy/Overkiz covers with venetian blind slats (io ExteriorVenetianBlind),
+> which is where the two tilt edge cases below were found and fixed. Travel times and `command_delay` still
 > want checking against your own covers. Bug reports and pull requests are
 > welcome.
 
@@ -246,6 +246,15 @@ recognised the same way.
 
 Without this, a full tilt sent the calculated position off to 0 % or 100 %
 while the cover had not actually gone anywhere.
+
+### Which command is sent
+
+If the source entity can address a tilt angle at all, every tilt — the end
+stops included — is sent as `set_cover_tilt_position`. On a Somfy io venetian
+blind, `open_cover_tilt` and `close_cover_tilt` only nudge the slats: the motor
+twitches and the slats stay where they were, so 0 % and 100 % never arrived
+while every angle in between worked. `open_cover_tilt` and `close_cover_tilt`
+are only used for a source that cannot address an angle.
 
 ## Limits
 
