@@ -1,12 +1,12 @@
 {
   "domain": "overkiz_realtime",
   "name": "Overkiz Realtime Position",
-  "codeowners": ["@florian"],
+  "codeowners": ["@neuhausf"],
   "config_flow": true,
-  "documentation": "https://github.com/florian/overkiz-realtime-position",
+  "documentation": "https://github.com/neuhausf/overkiz_realtime",
   "integration_type": "helper",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/florian/overkiz-realtime-position/issues",
+  "issue_tracker": "https://github.com/neuhausf/overkiz_realtime/issues",
   "requirements": [],
   "version": "1.0.0"
 }
