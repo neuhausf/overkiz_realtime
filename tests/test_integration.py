@@ -613,3 +613,164 @@ async def test_unload_entry(hass: HomeAssistant) -> None:
 
     state = hass.states.get(TARGET)
     assert state is None or state.state in ("unavailable", "unknown")
+
+
+TILTABLE = (
+    POSITIONABLE
+    | CoverEntityFeature.OPEN_TILT
+    | CoverEntityFeature.CLOSE_TILT
+    | CoverEntityFeature.SET_TILT_POSITION
+)
+
+
+async def test_full_tilt_open_does_not_start_a_position_run(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, source_calls: SourceCalls
+) -> None:
+    """Opening the slats fully must leave the cover position where it is.
+
+    Found on real hardware: turning the slats runs the motor for a moment and
+    the gateway reports that like any other run. That report used to be taken
+    for a position run, which sent the calculated position off to 100 %.
+    """
+    _set_source(hass, "open", 40, features=TILTABLE, current_tilt_position=0)
+    await _setup(hass, **{CONF_TILT_ENABLED: True})
+
+    await hass.services.async_call(
+        "cover", "open_cover_tilt", {"entity_id": TARGET}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert len(source_calls.of("open_cover_tilt")) == 1
+    # Only the slats were commanded, the cover itself was not.
+    assert source_calls.of("open_cover") == []
+
+    # The gateway now reports the motor running, as it does for a tilt.
+    _set_source(hass, STATE_OPENING, 40, features=TILTABLE, current_tilt_position=0)
+    await _advance(hass, freezer, 3)
+
+    state = hass.states.get(TARGET)
+    assert state.attributes["current_position"] == 40
+    assert state.state not in (STATE_OPENING, STATE_CLOSING)
+
+    # And the run ends where it started.
+    _set_source(hass, "open", 40, features=TILTABLE, current_tilt_position=100)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(TARGET)
+    assert state.attributes["current_position"] == 40
+    assert state.attributes["current_tilt_position"] == 100
+
+
+async def test_full_tilt_close_does_not_start_a_position_run(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The same for closing the slats fully, which reported a closing run."""
+    _set_source(hass, "open", 60, features=TILTABLE, current_tilt_position=100)
+    await _setup(hass, **{CONF_TILT_ENABLED: True})
+
+    await hass.services.async_call(
+        "cover", "close_cover_tilt", {"entity_id": TARGET}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    _set_source(hass, STATE_CLOSING, 60, features=TILTABLE, current_tilt_position=100)
+    await _advance(hass, freezer, 3)
+
+    state = hass.states.get(TARGET)
+    assert state.attributes["current_position"] == 60
+    assert state.state not in (STATE_OPENING, STATE_CLOSING)
+
+
+async def test_partial_tilt_still_leaves_the_position_alone(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A tilt to an intermediate angle behaved correctly and must keep doing so."""
+    _set_source(hass, "open", 30, features=TILTABLE, current_tilt_position=0)
+    await _setup(hass, **{CONF_TILT_ENABLED: True})
+
+    await hass.services.async_call(
+        "cover",
+        "set_cover_tilt_position",
+        {"entity_id": TARGET, "tilt_position": 50},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    _set_source(hass, STATE_OPENING, 30, features=TILTABLE, current_tilt_position=0)
+    await _advance(hass, freezer, 2)
+
+    assert hass.states.get(TARGET).attributes["current_position"] == 30
+
+
+async def test_tilt_run_does_not_feed_the_calibration(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Travel times must not be learned from the slats turning."""
+    _set_source(hass, "open", 50, features=TILTABLE, current_tilt_position=0)
+    entry = await _setup(hass, **{CONF_TILT_ENABLED: True})
+
+    await hass.services.async_call(
+        "cover", "open_cover_tilt", {"entity_id": TARGET}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    _set_source(hass, STATE_OPENING, 50, features=TILTABLE, current_tilt_position=20)
+    await _advance(hass, freezer, 1)
+    _set_source(hass, STATE_OPENING, 55, features=TILTABLE, current_tilt_position=80)
+    await _advance(hass, freezer, 1)
+    _set_source(hass, "open", 55, features=TILTABLE, current_tilt_position=100)
+    await hass.async_block_till_done()
+
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    assert runtime.calibration == {}
+    state = hass.states.get(TARGET)
+    assert state.attributes["travel_time_up"] == 20.0
+    assert state.attributes["travel_time_down"] == 25.0
+
+
+async def test_position_run_after_a_tilt_is_still_tracked(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The tilt window must not swallow a real run that follows it."""
+    _set_source(hass, "closed", 0, features=TILTABLE, current_tilt_position=0)
+    await _setup(hass, **{CONF_TILT_ENABLED: True})
+
+    await hass.services.async_call(
+        "cover", "open_cover_tilt", {"entity_id": TARGET}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    # Straight afterwards, while the tilt window would still be open, a real
+    # opening run is commanded.
+    await hass.services.async_call(
+        "cover", "open_cover", {"entity_id": TARGET}, blocking=True
+    )
+    await _advance(hass, freezer, 10)
+
+    # 10 s of a 20 s opening run
+    assert hass.states.get(TARGET).attributes["current_position"] == pytest.approx(
+        50, abs=3
+    )
+
+
+async def test_external_tilt_command_does_not_start_a_position_run(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A tilt sent straight to the Overkiz entity is recognised as a tilt."""
+    _set_source(hass, "open", 70, features=TILTABLE, current_tilt_position=0)
+    await _setup(hass, **{CONF_TILT_ENABLED: True})
+
+    hass.bus.async_fire(
+        EVENT_CALL_SERVICE,
+        {
+            "domain": "cover",
+            "service": "open_cover_tilt",
+            "service_data": {"entity_id": SOURCE},
+        },
+    )
+    await hass.async_block_till_done()
+
+    _set_source(hass, STATE_OPENING, 70, features=TILTABLE, current_tilt_position=0)
+    await _advance(hass, freezer, 3)
+
+    assert hass.states.get(TARGET).attributes["current_position"] == 70

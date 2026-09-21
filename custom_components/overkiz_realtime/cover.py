@@ -132,6 +132,19 @@ _EXTERNAL_MOVE_SERVICES = {
     SERVICE_STOP_COVER,
 }
 
+# Services that only turn the slats
+_EXTERNAL_TILT_SERVICES = {
+    SERVICE_OPEN_COVER_TILT,
+    SERVICE_CLOSE_COVER_TILT,
+    SERVICE_SET_COVER_TILT_POSITION,
+}
+
+# Fallback length of the window in which a movement report is attributed to a
+# tilt command rather than to a position run, on top of the tilt travel time
+# and the command delay. Normally the window closes as soon as the gateway
+# reports the run as finished; this only covers a gateway that never does.
+TILT_REPORT_GRACE = 5.0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -266,6 +279,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         )
 
         self._measurement: TravelMeasurement | None = None
+        self._tilt_command_until = 0.0
         self._force_calibration = False
         self._source_moving = False
         self._position_confirmed = False
@@ -538,6 +552,10 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         else:
             service, data = SERVICE_CLOSE_COVER_TILT, {}
 
+        # Open the window before the command goes out: with blocking=True the
+        # source can report the movement while we are still awaiting the call.
+        self._note_tilt_command()
+
         await self._async_call_source(service, data)
         self._tilt_calc.start_travel(target)
         self._async_start_updater()
@@ -565,8 +583,37 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
     # ------------------------------------------------------------------
 
     @callback
+    def _note_tilt_command(self) -> None:
+        """Remember that a tilt command is on its way to the gateway.
+
+        Turning the slats runs the motor for a moment, and the gateway reports
+        that exactly like an ordinary opening or closing run -- most visibly
+        for a full open or close of the slats, which is a longer turn than a
+        few degrees in between. Taking such a report for a position run is what
+        used to send the calculated position off to 0 % or 100 %.
+        """
+        self._tilt_command_until = time.monotonic() + (
+            self._command_delay
+            + max(self._tilt_calc.travel_time_up, self._tilt_calc.travel_time_down)
+            + TILT_REPORT_GRACE
+        )
+
+    @callback
+    def _tilt_command_in_flight(self) -> bool:
+        """True while a movement report may still belong to a tilt command."""
+        return time.monotonic() < self._tilt_command_until
+
+    @callback
+    def _clear_tilt_command(self) -> None:
+        """Close the window again."""
+        self._tilt_command_until = 0.0
+
+    @callback
     def _schedule_travel(self, target: float, auto_stop: bool = False) -> None:
         """Start a run, after the configured command delay if there is one."""
+        # A position command supersedes a tilt command still in flight.
+        self._clear_tilt_command()
+
         if self._command_delay <= 0:
             self._begin_travel(target, auto_stop)
             return
@@ -754,7 +801,15 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
         )
 
         if not was_moving or wrong_direction:
-            if moving_up and not self._calc.is_opening():
+            if self._tilt_command_in_flight() and not self._calc.is_traveling():
+                # The slats are turning, the cover is not going anywhere.
+                # A tilt must not feed the travel time calibration either.
+                LOGGER.debug(
+                    "%s: movement reported while the slats turn, no run started",
+                    self.entity_id,
+                )
+                self._measurement = None
+            elif moving_up and not self._calc.is_opening():
                 self._begin_travel(POSITION_OPEN)
             elif not moving_up and not self._calc.is_closing():
                 self._begin_travel(POSITION_CLOSED)
@@ -773,6 +828,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
     ) -> None:
         """The source reports the end of a run."""
         self._cancel_auto_stop()
+        self._clear_tilt_command()
 
         if position is not None and self._measurement is not None:
             self._measurement.add(time.monotonic(), position)
@@ -834,7 +890,7 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
             return
 
         service = data.get("service")
-        if service not in _EXTERNAL_MOVE_SERVICES:
+        if service not in _EXTERNAL_MOVE_SERVICES | _EXTERNAL_TILT_SERVICES:
             return
 
         if event.context is not None and event.context.id in self._own_context_ids:
@@ -850,6 +906,13 @@ class OverkizRealtimeCover(CoverEntity, RestoreEntity):
             return
 
         if self._source_entity_id not in entity_ids:
+            return
+
+        if service in _EXTERNAL_TILT_SERVICES:
+            # Somebody turned the slats on the source entity directly. Same as
+            # for our own tilt commands, the movement the gateway is about to
+            # report is the slats, not the cover.
+            self._note_tilt_command()
             return
 
         if service == SERVICE_STOP_COVER:
