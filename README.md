@@ -43,7 +43,7 @@ Kommando  ──►  Overkiz-Entität  ──►  Somfy-Gateway  ──►  Moto
 ### HACS
 
 1. HACS → Integrationen → ⋮ → **Benutzerdefinierte Repositories**
-2. Repository-URL eintragen, Kategorie **Integration**
+2. `https://github.com/neuhausf/overkiz_realtime` eintragen, Kategorie **Integration**
 3. „Overkiz Realtime Position“ installieren
 4. Home Assistant neu starten
 
