@@ -1,0 +1,110 @@
+{
+  "title": "Overkiz Realtime Position",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Quell-Store auswählen",
+        "description": "Wähle die bestehende Cover-Entität aus der Overkiz-Integration, für die eine Echtzeitposition berechnet werden soll.",
+        "data": {
+          "source_entity_id": "Quell-Entität"
+        }
+      },
+      "settings": {
+        "title": "Fahrzeiten für {source}",
+        "description": "Die Fahrzeit ist die Dauer einer kompletten Fahrt von ganz geschlossen bis ganz offen. Messe sie einmal mit der Stoppuhr; die automatische Kalibrierung korrigiert die Werte danach laufend.",
+        "data": {
+          "name": "Name der neuen Entität",
+          "travel_time_up": "Fahrzeit hoch (ganz zu bis ganz auf)",
+          "travel_time_down": "Fahrzeit runter (ganz auf bis ganz zu)",
+          "tilt_enabled": "Lamellenposition berechnen",
+          "tilt_time_up": "Lamellenzeit auf",
+          "tilt_time_down": "Lamellenzeit zu"
+        }
+      }
+    },
+    "error": {
+      "source_is_realtime": "Diese Entität wurde bereits von dieser Integration erzeugt.",
+      "source_unavailable": "Diese Entität liefert aktuell keinen Zustand."
+    },
+    "abort": {
+      "already_configured": "Für diese Store existiert bereits eine Echtzeit-Entität."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Einstellungen",
+        "description": "Quelle: {source}",
+        "data": {
+          "travel_time_up": "Fahrzeit hoch",
+          "travel_time_down": "Fahrzeit runter",
+          "tilt_enabled": "Lamellenposition berechnen",
+          "tilt_time_up": "Lamellenzeit auf",
+          "tilt_time_down": "Lamellenzeit zu",
+          "tilt_follows_position": "Lamellen bei Fahrtbeginn mitdrehen",
+          "update_interval": "Aktualisierungsintervall während der Fahrt",
+          "command_delay": "Verzögerung zwischen Kommando und Fahrtbeginn",
+          "resync_threshold": "Korrekturschwelle für Gateway-Rückmeldungen",
+          "timed_positioning": "Zielposition notfalls über Stoppuhr anfahren",
+          "auto_calibration": "Fahrzeiten automatisch nachführen",
+          "calibration_weight": "Gewicht einer einzelnen Messung"
+        },
+        "data_description": {
+          "update_interval": "Kleinere Werte ergeben eine flüssigere Anzeige, erzeugen aber mehr Statusänderungen.",
+          "command_delay": "Zeit, die das Gateway und der Funkweg brauchen, bis der Motor tatsächlich anläuft.",
+          "resync_threshold": "Weicht die vom Gateway gemeldete Position stärker als dieser Wert ab, wird die Berechnung sofort darauf gesetzt. 100 % schaltet die Korrektur während der Fahrt ab.",
+          "timed_positioning": "Nur für Geräte ohne Positionsunterstützung, etwa RTS-Motoren: Die Fahrt wird nach der berechneten Zeit gestoppt.",
+          "calibration_weight": "1.0 übernimmt jede Messung sofort, kleine Werte glätten über viele Fahrten."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_known_position": {
+      "name": "Bekannte Position setzen",
+      "description": "Setzt die berechnete Position, ohne einen Fahrbefehl zu senden.",
+      "fields": {
+        "position": {
+          "name": "Position",
+          "description": "Tatsächliche Position der Store (0 = geschlossen, 100 = offen)."
+        },
+        "tilt_position": {
+          "name": "Lamellenposition",
+          "description": "Tatsächliche Lamellenposition."
+        }
+      }
+    },
+    "set_travel_times": {
+      "name": "Fahrzeiten setzen",
+      "description": "Überschreibt die Fahrzeiten zur Laufzeit und speichert sie dauerhaft.",
+      "fields": {
+        "travel_time_up": {
+          "name": "Fahrzeit hoch",
+          "description": "Sekunden für eine komplette Auffahrt."
+        },
+        "travel_time_down": {
+          "name": "Fahrzeit runter",
+          "description": "Sekunden für eine komplette Abfahrt."
+        },
+        "tilt_time_up": {
+          "name": "Lamellenzeit auf",
+          "description": "Sekunden, bis die Lamellen vollständig geöffnet sind."
+        },
+        "tilt_time_down": {
+          "name": "Lamellenzeit zu",
+          "description": "Sekunden, bis die Lamellen vollständig geschlossen sind."
+        }
+      }
+    },
+    "calibrate": {
+      "name": "Kalibrierfahrt",
+      "description": "Fährt die Store komplett und misst die tatsächlichen Fahrzeiten.",
+      "fields": {
+        "direction": {
+          "name": "Richtung",
+          "description": "Welche Fahrzeit gemessen werden soll."
+        }
+      }
+    }
+  }
+}

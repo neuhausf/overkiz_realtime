@@ -1,0 +1,110 @@
+{
+  "title": "Overkiz Realtime Position",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select the source cover",
+        "description": "Pick the existing cover entity from the Overkiz integration that should get a calculated real-time position.",
+        "data": {
+          "source_entity_id": "Source entity"
+        }
+      },
+      "settings": {
+        "title": "Travel times for {source}",
+        "description": "The travel time is how long a full run from fully closed to fully open takes. Measure it once with a stopwatch; auto calibration keeps correcting it afterwards.",
+        "data": {
+          "name": "Name of the new entity",
+          "travel_time_up": "Travel time up (closed to open)",
+          "travel_time_down": "Travel time down (open to closed)",
+          "tilt_enabled": "Calculate tilt position",
+          "tilt_time_up": "Tilt time open",
+          "tilt_time_down": "Tilt time closed"
+        }
+      }
+    },
+    "error": {
+      "source_is_realtime": "This entity was created by this integration already.",
+      "source_unavailable": "This entity currently has no state."
+    },
+    "abort": {
+      "already_configured": "A real-time entity already exists for this cover."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Settings",
+        "description": "Source: {source}",
+        "data": {
+          "travel_time_up": "Travel time up",
+          "travel_time_down": "Travel time down",
+          "tilt_enabled": "Calculate tilt position",
+          "tilt_time_up": "Tilt time open",
+          "tilt_time_down": "Tilt time closed",
+          "tilt_follows_position": "Move slats when travel starts",
+          "update_interval": "Update interval while travelling",
+          "command_delay": "Delay between command and motor start",
+          "resync_threshold": "Correction threshold for gateway feedback",
+          "timed_positioning": "Reach target position with a timed stop",
+          "auto_calibration": "Keep travel times up to date automatically",
+          "calibration_weight": "Weight of a single measurement"
+        },
+        "data_description": {
+          "update_interval": "Lower values look smoother but produce more state changes.",
+          "command_delay": "Time the gateway and the radio link need before the motor actually starts.",
+          "resync_threshold": "If the position reported by the gateway deviates more than this, the calculation snaps to it. 100 % disables correction while travelling.",
+          "timed_positioning": "Only for devices without position support such as RTS motors: the run is stopped after the calculated time.",
+          "calibration_weight": "1.0 adopts every measurement immediately, small values smooth over many runs."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_known_position": {
+      "name": "Set known position",
+      "description": "Sets the calculated position without sending a movement command.",
+      "fields": {
+        "position": {
+          "name": "Position",
+          "description": "Actual position of the cover (0 = closed, 100 = open)."
+        },
+        "tilt_position": {
+          "name": "Tilt position",
+          "description": "Actual tilt position."
+        }
+      }
+    },
+    "set_travel_times": {
+      "name": "Set travel times",
+      "description": "Overrides the travel times at runtime and stores them permanently.",
+      "fields": {
+        "travel_time_up": {
+          "name": "Travel time up",
+          "description": "Seconds for a full opening run."
+        },
+        "travel_time_down": {
+          "name": "Travel time down",
+          "description": "Seconds for a full closing run."
+        },
+        "tilt_time_up": {
+          "name": "Tilt time open",
+          "description": "Seconds until the slats are fully open."
+        },
+        "tilt_time_down": {
+          "name": "Tilt time closed",
+          "description": "Seconds until the slats are fully closed."
+        }
+      }
+    },
+    "calibrate": {
+      "name": "Calibration run",
+      "description": "Runs the cover end to end and measures the actual travel times.",
+      "fields": {
+        "direction": {
+          "name": "Direction",
+          "description": "Which travel time to measure."
+        }
+      }
+    }
+  }
+}

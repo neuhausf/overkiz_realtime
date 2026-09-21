@@ -1,0 +1,112 @@
+set_known_position:
+  name: Bekannte Position setzen
+  description: >-
+    Setzt die berechnete Position ohne einen Fahrbefehl zu senden. Nützlich,
+    wenn die Store von Hand oder über eine Funkfernbedienung verstellt wurde
+    und die Berechnung wieder eingenordet werden muss.
+  target:
+    entity:
+      integration: overkiz_realtime
+      domain: cover
+  fields:
+    position:
+      name: Position
+      description: Tatsächliche Position der Store (0 = geschlossen, 100 = offen).
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    tilt_position:
+      name: Lamellenposition
+      description: Tatsächliche Lamellenposition, falls Lamellen aktiviert sind.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+
+set_travel_times:
+  name: Fahrzeiten setzen
+  description: >-
+    Überschreibt die Fahrzeiten zur Laufzeit und speichert sie dauerhaft.
+    Die Werte gelten jeweils für eine komplette Fahrt von 0 % auf 100 %.
+  target:
+    entity:
+      integration: overkiz_realtime
+      domain: cover
+  fields:
+    travel_time_up:
+      name: Fahrzeit hoch
+      description: Sekunden für eine komplette Auffahrt.
+      required: false
+      selector:
+        number:
+          min: 0.5
+          max: 600
+          step: 0.1
+          mode: box
+          unit_of_measurement: s
+    travel_time_down:
+      name: Fahrzeit runter
+      description: Sekunden für eine komplette Abfahrt.
+      required: false
+      selector:
+        number:
+          min: 0.5
+          max: 600
+          step: 0.1
+          mode: box
+          unit_of_measurement: s
+    tilt_time_up:
+      name: Lamellenzeit auf
+      description: Sekunden, bis die Lamellen vollständig geöffnet sind.
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 60
+          step: 0.1
+          mode: box
+          unit_of_measurement: s
+    tilt_time_down:
+      name: Lamellenzeit zu
+      description: Sekunden, bis die Lamellen vollständig geschlossen sind.
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 60
+          step: 0.1
+          mode: box
+          unit_of_measurement: s
+
+calibrate:
+  name: Kalibrierfahrt
+  description: >-
+    Fährt die Store komplett und misst die tatsächlichen Fahrzeiten anhand der
+    Rückmeldungen des Gateways. Setzt voraus, dass die Quell-Entität eine
+    Position meldet.
+  target:
+    entity:
+      integration: overkiz_realtime
+      domain: cover
+  fields:
+    direction:
+      name: Richtung
+      description: Welche Fahrzeit gemessen werden soll.
+      required: false
+      default: both
+      selector:
+        select:
+          options:
+            - label: Beide Richtungen
+              value: both
+            - label: Nur Auffahrt
+              value: up
+            - label: Nur Abfahrt
+              value: down

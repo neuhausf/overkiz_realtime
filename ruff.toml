@@ -1,0 +1,8 @@
+# Entspricht der Import-Konvention von Home Assistant Core
+target-version = "py312"
+
+[lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components", "homeassistant", "tests"]
+combine-as-imports = true
+split-on-trailing-comma = false
